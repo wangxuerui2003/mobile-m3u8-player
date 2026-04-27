@@ -10,9 +10,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.m3u8player.M3U8PlayerApplication
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -21,8 +23,11 @@ fun ProfileScreen(
 ) {
     val videoCount by viewModel.videoCount.collectAsState()
     val lastUpdateTime by viewModel.lastUpdateTime.collectAsState()
-    val isUpdating by viewModel.isUpdating.collectAsState()
-    val updateProgress by viewModel.updateProgress.collectAsState()
+    val context = LocalContext.current
+    val app = context.applicationContext as M3U8PlayerApplication
+    val globalUpdateState by app.updateState.collectAsState()
+    val isUpdating = globalUpdateState.isUpdating
+    val updateProgress = globalUpdateState.progress
     
     Scaffold(
         topBar = {
@@ -84,10 +89,19 @@ fun ProfileScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "更新中 ${updateProgress.toInt()}%",
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "更新中 ${updateProgress.toInt()}%",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            TextButton(onClick = { viewModel.cancelUpdate() }) {
+                                Text("取消")
+                            }
+                        }
                     } else {
                         Button(
                             onClick = { viewModel.updateData() },
