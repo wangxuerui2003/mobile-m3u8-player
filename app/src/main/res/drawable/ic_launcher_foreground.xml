@@ -3,12 +3,38 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-  <group android:scaleX="0.5"
-      android:scaleY="0.5"
-      android:translateX="27"
-      android:translateY="27">
+  <!-- Play button circle -->
+  <group android:scaleX="0.55"
+      android:scaleY="0.55"
+      android:translateX="24.2"
+      android:translateY="22">
+    <!-- Outer ring -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:pathData="M36,18C26.06,18 18,26.06 18,36s8.06,18 18,18 18,-8.06 18,-18S45.94,18 36,18z"/>
+    <!-- Play triangle -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M12,2C6.48,2 2,6.48 2,12s4.48,10 10,10 10,-4.48 10,-10S17.52,2 12,2zM10,16.5v-9l6,4.5 -6,4.5z"/>
+        android:pathData="M30,26L46,36L30,46Z"/>
+  </group>
+  <!-- Signal waves (stream indicator) -->
+  <group android:translateX="72" android:translateY="68">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.8"
+        android:pathData="M0,8 Q4,4 8,8"/>
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:pathData="M-2,12 Q4,5 10,12"/>
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.2"
+        android:pathData="M-4,16 Q4,6 12,16"/>
   </group>
 </vector>

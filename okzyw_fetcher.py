@@ -428,13 +428,86 @@ def fetch_all_data(db_path: str = DB_FILE, fetch_details: bool = True):
         db.close()
 
 
+def fetch_list_to_json(output_path: str, delay: float = 0.8, max_pages: int = 0):
+    """获取列表数据并输出为JSON文件（用于Android APK预置数据）"""
+    print("="*60)
+    print("开始获取列表数据 → JSON")
+    print("="*60)
+    
+    fetcher = OkzywFetcher()
+    
+    # 获取第一页
+    first_page = fetcher.get_list_page(1)
+    if not first_page:
+        raise Exception("无法获取第一页数据")
+    
+    total_pages = first_page.get('pagecount', 0)
+    total_items = first_page.get('total', 0)
+    categories = first_page.get('class', [])
+    
+    # Limit pages if max_pages specified
+    fetch_pages = min(total_pages, max_pages) if max_pages > 0 else total_pages
+    
+    print(f"总页数: {total_pages}, 总条数: {total_items}, 本次获取: {fetch_pages} 页")
+    
+    all_videos = list(first_page.get('list', []))
+    print(f"第 1/{fetch_pages} 页, 已获取 {len(all_videos)} 条")
+    
+    # 获取剩余页面
+    for page in range(2, fetch_pages + 1):
+        time.sleep(delay)
+        page_data = fetcher.get_list_page(page)
+        videos = page_data.get('list', [])
+        if not videos:
+            print(f"第 {page}/{fetch_pages} 页为空，跳过")
+            continue
+        all_videos.extend(videos)
+        if page % 10 == 0 or page == fetch_pages:
+            print(f"第 {page}/{fetch_pages} 页, 已获取 {len(all_videos)} 条")
+    
+    # 构建输出
+    output = {
+        "categories": categories,
+        "videos": all_videos,
+        "total": total_items,
+        "fetched_at": datetime.now().isoformat()
+    }
+    
+    # 写入文件
+    os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else '.', exist_ok=True)
+    with open(output_path, 'w', encoding='utf-8') as f:
+        json.dump(output, f, ensure_ascii=False)
+    
+    file_size_mb = os.path.getsize(output_path) / 1024 / 1024
+    print(f"\nJSON文件已写入: {output_path}")
+    print(f"视频数: {len(all_videos)}, 分类数: {len(categories)}")
+    print(f"文件大小: {file_size_mb:.2f} MB")
+    print("="*60)
+
+
 if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description='获取 okzyw.net 全部数据')
-    parser.add_argument('--db', default=DB_FILE, help='数据库文件路径')
-    parser.add_argument('--no-details', action='store_true', help='不获取详情数据（仅获取列表）')
+    subparsers = parser.add_subparsers(dest='command', help='子命令')
+    
+    # fetch-db: 原有功能，获取数据到SQLite
+    db_parser = subparsers.add_parser('fetch-db', help='获取数据到SQLite数据库')
+    db_parser.add_argument('--db', default=DB_FILE, help='数据库文件路径')
+    db_parser.add_argument('--no-details', action='store_true', help='不获取详情数据')
+    
+    # fetch-json: 获取列表数据到JSON（用于APK预置）
+    json_parser = subparsers.add_parser('fetch-json', help='获取列表数据到JSON文件（APK预置）')
+    json_parser.add_argument('--output', default='app/src/main/assets/preset_videos.json', help='输出JSON路径')
+    json_parser.add_argument('--delay', type=float, default=0.5, help='请求间隔(秒)')
+    json_parser.add_argument('--max-pages', type=int, default=200, help='最大获取页数(0=全部)')
     
     args = parser.parse_args()
     
-    fetch_all_data(args.db, fetch_details=not args.no_details)
+    if args.command == 'fetch-json':
+        fetch_list_to_json(args.output, delay=args.delay, max_pages=args.max_pages)
+    else:
+        # 默认行为：fetch-db
+        db_path = getattr(args, 'db', DB_FILE)
+        no_details = getattr(args, 'no_details', False)
+        fetch_all_data(db_path, fetch_details=not no_details)

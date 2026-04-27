@@ -57,37 +57,69 @@ class VideoRepository @Inject constructor(
         }
     }
     
-    // Fetch all video list from API and save to database
+    // Incremental update: fetch from page 1, stop when we hit existing data
     suspend fun fetchAllVideoList(
         onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }
     ): Result<Int> {
         return try {
-            dao.deleteAllVideos()
-            dao.deleteAllCategories()
-
-            // Fetch first page to get total pages
+            // Fetch first page to get total pages and categories
             val firstPage = retry { api.getVideoList(page = 1) }
             val totalPages = firstPage.pageCount
 
-            // Save categories
+            // Always update categories (they may change)
             dao.insertCategories(firstPage.categories.map { it.toEntity() })
 
-            // Save first page videos
-            dao.insertVideos(firstPage.list.map { it.toEntity() })
+            // Process first page: insert new/updated videos
+            var newCount = insertNewVideos(firstPage.list)
             onProgress(1, totalPages)
 
-            // Fetch remaining pages with delay to avoid rate limiting
+            // Fetch remaining pages, stop early if we find all videos already exist
+            var stoppedEarly = false
             for (page in 2..totalPages) {
-                delay(800) // 800ms between requests to avoid server rate limit
+                delay(800)
                 val pageData = retry { api.getVideoList(page = page) }
-                dao.insertVideos(pageData.list.map { it.toEntity() })
+                val pageNewCount = insertNewVideos(pageData.list)
+                newCount += pageNewCount
                 onProgress(page, totalPages)
+
+                // If no new videos on this page, all subsequent pages are also old
+                if (pageNewCount == 0 && pageData.list.isNotEmpty()) {
+                    stoppedEarly = true
+                    break
+                }
             }
 
-            Result.success(firstPage.total)
+            val totalInDb = dao.getVideoCount()
+            if (stoppedEarly) {
+                // Fill progress to 100% since we stopped early
+                onProgress(totalPages, totalPages)
+            }
+
+            dao.setMetadata(MetadataEntity("last_update", System.currentTimeMillis().toString()))
+            dao.setMetadata(MetadataEntity("total_items", totalInDb.toString()))
+
+            Result.success(totalInDb)
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    // Insert only new or updated videos, return count of new ones
+    private suspend fun insertNewVideos(videos: List<VideoItem>): Int {
+        var newCount = 0
+        val entities = mutableListOf<VideoListEntity>()
+        for (video in videos) {
+            val exists = dao.videoExists(video.vodId)
+            if (!exists) {
+                newCount++
+            }
+            // Always insert (REPLACE) to update any changed fields
+            entities.add(video.toEntity())
+        }
+        if (entities.isNotEmpty()) {
+            dao.insertVideos(entities)
+        }
+        return newCount
     }
 
     private suspend fun <T> retry(

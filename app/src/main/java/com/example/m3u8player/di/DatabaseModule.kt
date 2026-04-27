@@ -2,6 +2,7 @@ package com.example.m3u8player.di
 
 import android.content.Context
 import androidx.room.Room
+import com.example.m3u8player.data.PresetDataLoader
 import com.example.m3u8player.data.db.AppDatabase
 import com.example.m3u8player.data.db.VideoDao
 import dagger.Module
@@ -30,5 +31,14 @@ object DatabaseModule {
     @Provides
     fun provideVideoDao(database: AppDatabase): VideoDao {
         return database.videoDao()
+    }
+
+    @Provides
+    @Singleton
+    fun providePresetDataLoader(
+        @ApplicationContext context: Context,
+        dao: VideoDao
+    ): PresetDataLoader {
+        return PresetDataLoader(context, dao)
     }
 }

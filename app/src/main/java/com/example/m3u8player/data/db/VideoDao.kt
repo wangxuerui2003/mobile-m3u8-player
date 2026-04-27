@@ -30,6 +30,9 @@ interface VideoDao {
     
     @Query("SELECT COUNT(*) FROM video_list")
     suspend fun getVideoCount(): Int
+
+    @Query("SELECT EXISTS(SELECT 1 FROM video_list WHERE vodId = :vodId)")
+    suspend fun videoExists(vodId: Int): Boolean
     
     // Category
     @Query("SELECT * FROM category")
