@@ -1,0 +1,73 @@
+<resources>
+    <string name="app_name">M3U8 Player</string>
+    
+    <!-- Bottom Navigation -->
+    <string name="nav_home">首页</string>
+    <string name="nav_search">搜索</string>
+    <string name="nav_watch_later">稍后再看</string>
+    <string name="nav_downloads">下载</string>
+    <string name="nav_profile">我的</string>
+    
+    <!-- Home -->
+    <string name="home_recent_watched">最近观看</string>
+    <string name="home_empty_history">暂无观看记录</string>
+    
+    <!-- Search -->
+    <string name="search_hint">搜索视频</string>
+    <string name="search_results">搜索结果</string>
+    <string name="search_empty">没有找到相关视频</string>
+    
+    <!-- Detail -->
+    <string name="detail_play">播放</string>
+    <string name="detail_watch_later">稍后再看</string>
+    <string name="detail_download">下载</string>
+    <string name="detail_remove_watch_later">取消稍后再看</string>
+    <string name="detail_added_watch_later">已添加到稍后再看</string>
+    <string name="detail_removed_watch_later">已取消稍后再看</string>
+    
+    <!-- Watch Later -->
+    <string name="watch_later_empty">暂无稍后再看的视频</string>
+    <string name="watch_later_delete">删除</string>
+    
+    <!-- Downloads -->
+    <string name="downloads_downloading">下载中</string>
+    <string name="downloads_completed">已完成</string>
+    <string name="downloads_failed">失败</string>
+    <string name="downloads_pause">暂停</string>
+    <string name="downloads_resume">继续</string>
+    <string name="downloads_delete">删除</string>
+    <string name="downloads_empty">暂无下载</string>
+    <string name="download_start">开始下载</string>
+    
+    <!-- Profile -->
+    <string name="profile_statistics">统计数据</string>
+    <string name="profile_total_watch_time">总观看时长</string>
+    <string name="profile_videos_watched">观看视频数</string>
+    <string name="profile_downloads">下载数量</string>
+    <string name="profile_storage_used">占用空间</string>
+    <string name="profile_update_data">更新数据</string>
+    <string name="profile_clear_cache">清除缓存</string>
+    <string name="profile_about">关于</string>
+    <string name="profile_version">版本</string>
+    
+    <!-- Player -->
+    <string name="player_speed">倍速</string>
+    <string name="player_quality">画质</string>
+    <string name="player_cast">投屏</string>
+    <string name="player_episode">选集</string>
+    
+    <!-- Data Update -->
+    <string name="update_checking">检查更新中...</string>
+    <string name="update_downloading">下载列表数据中...</string>
+    <string name="update_completed">数据更新完成</string>
+    <string name="update_failed">数据更新失败</string>
+    <string name="update_no_update">已是最新数据</string>
+    
+    <!-- Common -->
+    <string name="cancel">取消</string>
+    <string name="confirm">确认</string>
+    <string name="delete_confirm">确定要删除吗？</string>
+    <string name="loading">加载中...</string>
+    <string name="error">错误</string>
+    <string name="retry">重试</string>
+</resources>

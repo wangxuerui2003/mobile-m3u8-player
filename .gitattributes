@@ -1,0 +1,38 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# Kotlin/Java source files
+*.kt text eol=lf
+*.kts text eol=lf
+*.java text eol=lf
+
+# XML/HTML/CSS
+*.xml text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+
+# Config files
+*.properties text eol=lf
+*.toml text eol=lf
+*.gradle text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+
+# Shell scripts
+*.sh text eol=lf
+
+# Python
+*.py text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.svg text eol=lf
+*.jar binary
+*.zip binary

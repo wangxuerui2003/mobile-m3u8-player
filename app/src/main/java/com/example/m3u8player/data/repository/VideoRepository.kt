@@ -1,0 +1,198 @@
+package com.example.m3u8player.data.repository
+
+import com.example.m3u8player.data.api.OkzywApi
+import com.example.m3u8player.data.db.VideoDao
+import com.example.m3u8player.data.model.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class VideoRepository @Inject constructor(
+    private val api: OkzywApi,
+    private val dao: VideoDao
+) {
+    
+    // Get video list from local database
+    fun getVideoList(page: Int = 1, pageSize: Int = 20): Flow<List<VideoItem>> {
+        val offset = (page - 1) * pageSize
+        return dao.getVideoList(limit = pageSize, offset = offset).map { entities ->
+            entities.map { it.toVideoItem() }
+        }
+    }
+    
+    // Search videos locally
+    fun searchVideos(query: String): Flow<List<VideoListEntity>> {
+        return dao.searchVideos(query)
+    }
+    
+    // Get videos by type
+    fun getVideosByType(typeId: Int, page: Int = 1, pageSize: Int = 20): Flow<List<VideoItem>> {
+        val offset = (page - 1) * pageSize
+        return dao.getVideosByType(typeId, limit = pageSize, offset = offset).map { entities ->
+            entities.map { it.toVideoItem() }
+        }
+    }
+    
+    // Get video detail from API
+    suspend fun getVideoDetail(vodId: Int): VideoDetail? {
+        return try {
+            val response = api.getVideoDetail(vodId = vodId)
+            if (response.code == 1 && response.list.isNotEmpty()) {
+                response.list.first()
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+    
+    // Get categories
+    fun getCategories(): Flow<List<Category>> {
+        return dao.getCategories().map { entities ->
+            entities.map { it.toCategory() }
+        }
+    }
+    
+    // Fetch all video list from API and save to database
+    suspend fun fetchAllVideoList(
+        onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }
+    ): Result<Int> {
+        return try {
+            dao.deleteAllVideos()
+            dao.deleteAllCategories()
+            
+            // Fetch first page to get total pages
+            val firstPage = api.getVideoList(page = 1)
+            val totalPages = firstPage.pageCount
+            
+            // Save categories
+            dao.insertCategories(firstPage.categories.map { it.toEntity() })
+            
+            // Save first page videos
+            dao.insertVideos(firstPage.list.map { it.toEntity() })
+            onProgress(1, totalPages)
+            
+            // Fetch remaining pages
+            for (page in 2..totalPages) {
+                val pageData = api.getVideoList(page = page)
+                dao.insertVideos(pageData.list.map { it.toEntity() })
+                onProgress(page, totalPages)
+            }
+            
+            Result.success(firstPage.total)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+    
+    // Get video count
+    suspend fun getVideoCount(): Int {
+        return dao.getVideoCount()
+    }
+    
+    // Watch History
+    fun getWatchHistory(): Flow<List<WatchHistoryEntity>> {
+        return dao.getWatchHistory()
+    }
+    
+    suspend fun saveWatchHistory(history: WatchHistoryEntity) {
+        dao.insertWatchHistory(history)
+    }
+    
+    suspend fun deleteWatchHistory(vodId: Int) {
+        dao.deleteWatchHistory(vodId)
+    }
+    
+    // Watch Later
+    fun getWatchLater(): Flow<List<WatchLaterEntity>> {
+        return dao.getWatchLater()
+    }
+    
+    suspend fun addToWatchLater(vodId: Int) {
+        dao.insertWatchLater(WatchLaterEntity(vodId = vodId))
+    }
+    
+    suspend fun removeFromWatchLater(vodId: Int) {
+        dao.deleteWatchLater(vodId)
+    }
+    
+    suspend fun isWatchLater(vodId: Int): Boolean {
+        val watchLater = dao.getWatchLater()
+        // This is a simple check, in production you'd want a more efficient query
+        return false // TODO: Implement properly
+    }
+    
+    // Downloads
+    fun getDownloads(): Flow<List<DownloadEntity>> {
+        return dao.getDownloads()
+    }
+    
+    suspend fun addDownload(download: DownloadEntity): Long {
+        return dao.insertDownload(download)
+    }
+    
+    suspend fun updateDownload(download: DownloadEntity) {
+        dao.updateDownload(download)
+    }
+    
+    suspend fun deleteDownload(id: Long) {
+        dao.deleteDownload(id)
+    }
+    
+    suspend fun deleteDownloadByVodId(vodId: Int) {
+        dao.deleteDownloadByVodId(vodId)
+    }
+    
+    // Metadata
+    suspend fun getLastUpdateTime(): String? {
+        return dao.getMetadata("last_update")
+    }
+    
+    suspend fun setLastUpdateTime(time: String) {
+        dao.setMetadata(MetadataEntity("last_update", time))
+    }
+    
+    suspend fun getTotalItems(): Int {
+        return dao.getMetadata("total_items")?.toIntOrNull() ?: 0
+    }
+    
+    suspend fun setTotalItems(count: Int) {
+        dao.setMetadata(MetadataEntity("total_items", count.toString()))
+    }
+}
+
+// Extension functions
+private fun VideoListEntity.toVideoItem() = VideoItem(
+    vodId = vodId,
+    vodName = vodName,
+    typeId = typeId,
+    typeName = typeName,
+    vodEn = vodEn,
+    vodTime = vodTime,
+    vodRemarks = vodRemarks,
+    vodPlayFrom = vodPlayFrom
+)
+
+private fun VideoItem.toEntity() = VideoListEntity(
+    vodId = vodId,
+    vodName = vodName,
+    typeId = typeId,
+    typeName = typeName,
+    vodEn = vodEn,
+    vodTime = vodTime,
+    vodRemarks = vodRemarks,
+    vodPlayFrom = vodPlayFrom
+)
+
+private fun Category.toEntity() = CategoryEntity(
+    typeId = typeId,
+    typeName = typeName
+)
+
+private fun CategoryEntity.toCategory() = Category(
+    typeId = typeId,
+    typeName = typeName
+)
