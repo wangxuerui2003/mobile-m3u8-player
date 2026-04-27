@@ -3,6 +3,7 @@ package com.example.m3u8player.data.repository
 import com.example.m3u8player.data.api.OkzywApi
 import com.example.m3u8player.data.db.VideoDao
 import com.example.m3u8player.data.model.*
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -63,29 +64,48 @@ class VideoRepository @Inject constructor(
         return try {
             dao.deleteAllVideos()
             dao.deleteAllCategories()
-            
+
             // Fetch first page to get total pages
-            val firstPage = api.getVideoList(page = 1)
+            val firstPage = retry { api.getVideoList(page = 1) }
             val totalPages = firstPage.pageCount
-            
+
             // Save categories
             dao.insertCategories(firstPage.categories.map { it.toEntity() })
-            
+
             // Save first page videos
             dao.insertVideos(firstPage.list.map { it.toEntity() })
             onProgress(1, totalPages)
-            
-            // Fetch remaining pages
+
+            // Fetch remaining pages with delay to avoid rate limiting
             for (page in 2..totalPages) {
-                val pageData = api.getVideoList(page = page)
+                delay(800) // 800ms between requests to avoid server rate limit
+                val pageData = retry { api.getVideoList(page = page) }
                 dao.insertVideos(pageData.list.map { it.toEntity() })
                 onProgress(page, totalPages)
             }
-            
+
             Result.success(firstPage.total)
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    private suspend fun <T> retry(
+        maxRetries: Int = 3,
+        initialDelayMs: Long = 2000,
+        block: suspend () -> T
+    ): T {
+        var lastException: Exception? = null
+        repeat(maxRetries) { attempt ->
+            try {
+                return block()
+            } catch (e: Exception) {
+                lastException = e
+                val delayMs = initialDelayMs * (attempt + 1) // exponential-ish backoff
+                delay(delayMs)
+            }
+        }
+        throw lastException!!
     }
     
     // Get video count

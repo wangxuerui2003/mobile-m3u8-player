@@ -26,7 +26,8 @@ object NetworkModule {
                 level = HttpLoggingInterceptor.Level.BASIC
             })
             .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             .build()
     }
     
