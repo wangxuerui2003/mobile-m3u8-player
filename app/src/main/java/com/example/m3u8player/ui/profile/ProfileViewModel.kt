@@ -29,10 +29,21 @@ class ProfileViewModel @Inject constructor(
     private val _lastUpdateTime = MutableStateFlow("")
     val lastUpdateTime: StateFlow<String> = _lastUpdateTime.asStateFlow()
 
+    private val _watchDurationMs = MutableStateFlow(0L)
+    val watchDurationMs: StateFlow<Long> = _watchDurationMs.asStateFlow()
+
+    private val _downloadCount = MutableStateFlow(0)
+    val downloadCount: StateFlow<Int> = _downloadCount.asStateFlow()
+
     val updateState get() = app.updateState
 
     init {
         loadStats()
+        viewModelScope.launch {
+            repository.observeVideoCount().collect { count ->
+                _videoCount.value = count
+            }
+        }
         // Reload stats when update finishes
         viewModelScope.launch {
             app.updateState.collect { state ->
@@ -45,7 +56,8 @@ class ProfileViewModel @Inject constructor(
 
     private fun loadStats() {
         viewModelScope.launch {
-            _videoCount.value = repository.getVideoCount()
+            _watchDurationMs.value = repository.getWatchDurationMs()
+            _downloadCount.value = repository.getDownloadedCount()
             val lastUpdate = repository.getLastUpdateTime()
             _lastUpdateTime.value = lastUpdate?.let {
                 SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(it.toLong()))
@@ -63,7 +75,9 @@ class ProfileViewModel @Inject constructor(
 
     fun clearCache() {
         viewModelScope.launch {
-            // TODO: Implement cache clearing
+            application.cacheDir.deleteRecursively()
+            application.externalCacheDir?.deleteRecursively()
+            loadStats()
         }
     }
 }

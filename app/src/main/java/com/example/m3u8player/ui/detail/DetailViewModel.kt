@@ -1,21 +1,19 @@
 package com.example.m3u8player.ui.detail
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.m3u8player.data.model.VideoDetail
-import com.example.m3u8player.data.model.DownloadEntity
 import com.example.m3u8player.data.repository.VideoRepository
-import com.example.m3u8player.service.DownloadWorker
+import com.example.m3u8player.service.DownloadCoordinator
+import com.example.m3u8player.service.DownloadEnqueueResult
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.Data
-import androidx.work.WorkManager
 import javax.inject.Inject
 
 data class Episode(
@@ -26,7 +24,7 @@ data class Episode(
 
 fun parseEpisodes(playUrl: String): List<Episode> {
     if (playUrl.isEmpty()) return emptyList()
-    
+
     return playUrl.split("#").mapIndexed { index, part ->
         val parts = part.split("$")
         if (parts.size >= 2) {
@@ -40,33 +38,35 @@ fun parseEpisodes(playUrl: String): List<Episode> {
 @HiltViewModel
 class DetailViewModel @Inject constructor(
     private val repository: VideoRepository,
-    @ApplicationContext private val context: Context
+    private val downloadCoordinator: DownloadCoordinator
 ) : ViewModel() {
-    
+
     private val _videoDetail = MutableStateFlow<VideoDetail?>(null)
     val videoDetail: StateFlow<VideoDetail?> = _videoDetail.asStateFlow()
-    
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
-    
+
     private val _isWatchLater = MutableStateFlow(false)
     val isWatchLater: StateFlow<Boolean> = _isWatchLater.asStateFlow()
-    
+
+    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val messages: SharedFlow<String> = _messages.asSharedFlow()
+
     fun loadVideoDetail(vodId: Int) {
         viewModelScope.launch {
             _isLoading.value = true
-            val detail = repository.getVideoDetail(vodId)
-            _videoDetail.value = detail
+            _videoDetail.value = repository.getVideoDetail(vodId)
             _isLoading.value = false
         }
     }
-    
+
     fun checkWatchLater(vodId: Int) {
         viewModelScope.launch {
-            _isWatchLater.value = false
+            _isWatchLater.value = repository.isWatchLater(vodId)
         }
     }
-    
+
     fun toggleWatchLater(vodId: Int) {
         viewModelScope.launch {
             if (_isWatchLater.value) {
@@ -77,32 +77,28 @@ class DetailViewModel @Inject constructor(
             _isWatchLater.value = !_isWatchLater.value
         }
     }
-    
+
     fun startDownload(vodId: Int, detail: VideoDetail) {
         viewModelScope.launch {
             val episodes = parseEpisodes(detail.vodPlayUrl)
-            val episode = episodes.firstOrNull() ?: return@launch
-            
-            val download = DownloadEntity(
-                vodId = vodId,
-                vodName = detail.vodName,
-                episode = episode.index,
-                status = "downloading"
-            )
-            repository.addDownload(download)
-            
-            val workRequest = OneTimeWorkRequestBuilder<DownloadWorker>()
-                .setInputData(
-                    Data.Builder()
-                        .putInt("vodId", vodId)
-                        .putString("vodName", detail.vodName)
-                        .putInt("episode", episode.index)
-                        .putString("videoUrl", episode.url)
-                        .build()
+            val episode = episodes.firstOrNull() ?: run {
+                _messages.emit("当前视频没有可下载的播放地址")
+                return@launch
+            }
+
+            when (
+                downloadCoordinator.enqueueDownload(
+                    vodId = vodId,
+                    vodName = detail.vodName,
+                    episode = episode.index,
+                    episodeName = episode.name,
+                    videoUrl = episode.url,
+                    coverUrl = detail.vodPic
                 )
-                .build()
-            
-            WorkManager.getInstance(context).enqueue(workRequest)
+            ) {
+                is DownloadEnqueueResult.Added -> _messages.emit("已加入下载队列")
+                is DownloadEnqueueResult.AlreadyExists -> _messages.emit("该剧集已在下载列表中")
+            }
         }
     }
 }

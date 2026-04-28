@@ -2,10 +2,22 @@ package com.example.m3u8player.data.repository
 
 import com.example.m3u8player.data.api.OkzywApi
 import com.example.m3u8player.data.db.VideoDao
-import com.example.m3u8player.data.model.*
+import com.example.m3u8player.data.model.Category
+import com.example.m3u8player.data.model.CategoryEntity
+import com.example.m3u8player.data.model.DownloadEntity
+import com.example.m3u8player.data.model.DownloadStatus
+import com.example.m3u8player.data.model.MetadataEntity
+import com.example.m3u8player.data.model.VideoDetail
+import com.example.m3u8player.data.model.VideoItem
+import com.example.m3u8player.data.model.VideoListEntity
+import com.example.m3u8player.data.model.WatchHistoryEntity
+import com.example.m3u8player.data.model.WatchLaterEntity
+import com.example.m3u8player.data.model.WatchLaterVideo
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -14,29 +26,25 @@ class VideoRepository @Inject constructor(
     private val api: OkzywApi,
     private val dao: VideoDao
 ) {
-    
-    // Get video list from local database
+
     fun getVideoList(page: Int = 1, pageSize: Int = 20): Flow<List<VideoItem>> {
         val offset = (page - 1) * pageSize
         return dao.getVideoList(limit = pageSize, offset = offset).map { entities ->
             entities.map { it.toVideoItem() }
         }
     }
-    
-    // Search videos locally
+
     fun searchVideos(query: String): Flow<List<VideoListEntity>> {
         return dao.searchVideos(query)
     }
-    
-    // Get videos by type
+
     fun getVideosByType(typeId: Int, page: Int = 1, pageSize: Int = 20): Flow<List<VideoItem>> {
         val offset = (page - 1) * pageSize
         return dao.getVideosByType(typeId, limit = pageSize, offset = offset).map { entities ->
             entities.map { it.toVideoItem() }
         }
     }
-    
-    // Get video detail from API
+
     suspend fun getVideoDetail(vodId: Int): VideoDetail? {
         return try {
             val response = api.getVideoDetail(vodId = vodId)
@@ -45,35 +53,29 @@ class VideoRepository @Inject constructor(
             } else {
                 null
             }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
-    
-    // Get categories
+
     fun getCategories(): Flow<List<Category>> {
         return dao.getCategories().map { entities ->
             entities.map { it.toCategory() }
         }
     }
-    
-    // Incremental update: fetch from page 1, stop when we hit existing data
+
     suspend fun fetchAllVideoList(
         onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }
     ): Result<Int> {
         return try {
-            // Fetch first page to get total pages and categories
             val firstPage = retry { api.getVideoList(page = 1) }
             val totalPages = firstPage.pageCount
 
-            // Always update categories (they may change)
             dao.insertCategories(firstPage.categories.map { it.toEntity() })
 
-            // Process first page: insert new/updated videos
             var newCount = insertNewVideos(firstPage.list)
             onProgress(1, totalPages)
 
-            // Fetch remaining pages, stop early if we find all videos already exist
             var stoppedEarly = false
             for (page in 2..totalPages) {
                 delay(800)
@@ -82,7 +84,6 @@ class VideoRepository @Inject constructor(
                 newCount += pageNewCount
                 onProgress(page, totalPages)
 
-                // If no new videos on this page, all subsequent pages are also old
                 if (pageNewCount == 0 && pageData.list.isNotEmpty()) {
                     stoppedEarly = true
                     break
@@ -91,7 +92,6 @@ class VideoRepository @Inject constructor(
 
             val totalInDb = dao.getVideoCount()
             if (stoppedEarly) {
-                // Fill progress to 100% since we stopped early
                 onProgress(totalPages, totalPages)
             }
 
@@ -104,16 +104,13 @@ class VideoRepository @Inject constructor(
         }
     }
 
-    // Insert only new or updated videos, return count of new ones
     private suspend fun insertNewVideos(videos: List<VideoItem>): Int {
         var newCount = 0
         val entities = mutableListOf<VideoListEntity>()
         for (video in videos) {
-            val exists = dao.videoExists(video.vodId)
-            if (!exists) {
+            if (!dao.videoExists(video.vodId)) {
                 newCount++
             }
-            // Always insert (REPLACE) to update any changed fields
             entities.add(video.toEntity())
         }
         if (entities.isNotEmpty()) {
@@ -133,90 +130,247 @@ class VideoRepository @Inject constructor(
                 return block()
             } catch (e: Exception) {
                 lastException = e
-                val delayMs = initialDelayMs * (attempt + 1) // exponential-ish backoff
-                delay(delayMs)
+                delay(initialDelayMs * (attempt + 1))
             }
         }
         throw lastException!!
     }
-    
-    // Get video count
-    suspend fun getVideoCount(): Int {
-        return dao.getVideoCount()
-    }
-    
-    // Watch History
-    fun getWatchHistory(): Flow<List<WatchHistoryEntity>> {
-        return dao.getWatchHistory()
-    }
-    
+
+    suspend fun getVideoCount(): Int = dao.getVideoCount()
+
+    fun observeVideoCount(): Flow<Int> = dao.observeVideoCount()
+
+    fun getWatchHistory(): Flow<List<WatchHistoryEntity>> = dao.getWatchHistory()
+
     suspend fun saveWatchHistory(history: WatchHistoryEntity) {
         dao.insertWatchHistory(history)
     }
-    
+
     suspend fun deleteWatchHistory(vodId: Int) {
         dao.deleteWatchHistory(vodId)
     }
-    
-    // Watch Later
-    fun getWatchLater(): Flow<List<WatchLaterEntity>> {
-        return dao.getWatchLater()
-    }
-    
+
+    fun getWatchLater(): Flow<List<WatchLaterEntity>> = dao.getWatchLater()
+
     suspend fun addToWatchLater(vodId: Int) {
         dao.insertWatchLater(WatchLaterEntity(vodId = vodId))
     }
-    
+
     suspend fun removeFromWatchLater(vodId: Int) {
         dao.deleteWatchLater(vodId)
     }
-    
-    suspend fun isWatchLater(vodId: Int): Boolean {
-        val watchLater = dao.getWatchLater()
-        // This is a simple check, in production you'd want a more efficient query
-        return false // TODO: Implement properly
+
+    suspend fun isWatchLater(vodId: Int): Boolean = dao.isWatchLater(vodId)
+
+    fun getWatchLaterVideos(): Flow<List<WatchLaterVideo>> = dao.getWatchLaterVideos()
+
+    fun getDownloads(): Flow<List<DownloadEntity>> = dao.getDownloads()
+
+    suspend fun getDownloadsSnapshot(): List<DownloadEntity> = dao.getDownloadsSnapshot()
+
+    suspend fun getDownloadsByStatuses(statuses: List<String>): List<DownloadEntity> {
+        return dao.getDownloadsByStatuses(statuses)
     }
-    
-    // Downloads
-    fun getDownloads(): Flow<List<DownloadEntity>> {
-        return dao.getDownloads()
+
+    suspend fun getDownloadsByIds(ids: List<Long>): List<DownloadEntity> {
+        if (ids.isEmpty()) return emptyList()
+        return dao.getDownloadsByIds(ids)
     }
-    
-    suspend fun addDownload(download: DownloadEntity): Long {
-        return dao.insertDownload(download)
-    }
-    
+
+    suspend fun addDownload(download: DownloadEntity): Long = dao.insertDownload(download)
+
     suspend fun updateDownload(download: DownloadEntity) {
         dao.updateDownload(download)
     }
-    
+
+    suspend fun getDownload(id: Long): DownloadEntity? = dao.getDownloadById(id)
+
+    suspend fun findDownloadByVodIdAndEpisode(vodId: Int, episode: Int): DownloadEntity? {
+        return dao.getDownloadByVodIdAndEpisode(vodId, episode)
+    }
+
+    suspend fun markDownloadEnqueued(id: Long, workId: String) {
+        dao.getDownloadById(id)?.let { download ->
+            dao.updateDownload(
+                download.copy(
+                    status = DownloadStatus.DOWNLOADING,
+                    workId = workId,
+                    speedBytesPerSec = 0,
+                    updatedAt = System.currentTimeMillis(),
+                    completedAt = null
+                )
+            )
+        }
+    }
+
+    suspend fun markDownloadQueued(id: Long, resetWork: Boolean = false) {
+        dao.getDownloadById(id)?.let { download ->
+            dao.updateDownload(
+                download.copy(
+                    status = DownloadStatus.QUEUED,
+                    workId = if (resetWork) null else download.workId,
+                    speedBytesPerSec = 0,
+                    updatedAt = System.currentTimeMillis(),
+                    completedAt = null
+                )
+            )
+        }
+    }
+
+    suspend fun markDownloadRunning(
+        id: Long,
+        downloadDir: String,
+        totalSegments: Int,
+        totalBytes: Long = 0
+    ) {
+        dao.getDownloadById(id)?.let { download ->
+            dao.updateDownload(
+                download.copy(
+                    status = DownloadStatus.DOWNLOADING,
+                    downloadDir = downloadDir,
+                    totalSegments = totalSegments,
+                    totalBytes = totalBytes,
+                    speedBytesPerSec = 0,
+                    updatedAt = System.currentTimeMillis(),
+                    completedAt = null
+                )
+            )
+        }
+    }
+
+    suspend fun markDownloadPaused(id: Long) {
+        dao.getDownloadById(id)?.let { download ->
+            dao.updateDownload(
+                download.copy(
+                    status = DownloadStatus.PAUSED,
+                    workId = null,
+                    speedBytesPerSec = 0,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    suspend fun markDownloadFailed(id: Long) {
+        dao.getDownloadById(id)?.let { download ->
+            dao.updateDownload(
+                download.copy(
+                    status = DownloadStatus.FAILED,
+                    workId = null,
+                    speedBytesPerSec = 0,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    suspend fun markDownloadCompleted(
+        id: Long,
+        localPath: String,
+        totalBytes: Long,
+        downloadedBytes: Long,
+        downloadedSegments: Int,
+        totalSegments: Int
+    ) {
+        dao.getDownloadById(id)?.let { download ->
+            dao.updateDownload(
+                download.copy(
+                    status = DownloadStatus.COMPLETED,
+                    workId = null,
+                    localPath = localPath,
+                    totalBytes = totalBytes,
+                    downloadedBytes = downloadedBytes,
+                    downloadedSegments = downloadedSegments,
+                    totalSegments = totalSegments,
+                    progress = 100f,
+                    speedBytesPerSec = 0,
+                    updatedAt = System.currentTimeMillis(),
+                    completedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    suspend fun updateDownloadProgress(
+        id: Long,
+        progress: Float,
+        downloadedBytes: Long,
+        totalBytes: Long,
+        downloadedSegments: Int,
+        totalSegments: Int,
+        speedBytesPerSec: Long
+    ) {
+        dao.getDownloadById(id)?.let { download ->
+            dao.updateDownload(
+                download.copy(
+                    status = DownloadStatus.DOWNLOADING,
+                    progress = progress.coerceIn(0f, 100f),
+                    downloadedBytes = downloadedBytes,
+                    totalBytes = totalBytes,
+                    downloadedSegments = downloadedSegments,
+                    totalSegments = totalSegments,
+                    speedBytesPerSec = speedBytesPerSec,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    suspend fun updateDownloadCoverPath(id: Long, coverPath: String?) {
+        dao.getDownloadById(id)?.let { download ->
+            dao.updateDownload(download.copy(coverPath = coverPath, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
     suspend fun deleteDownload(id: Long) {
+        dao.getDownloadById(id)?.let { download ->
+            deleteDownloadedAsset(download)
+        }
         dao.deleteDownload(id)
     }
-    
+
     suspend fun deleteDownloadByVodId(vodId: Int) {
         dao.deleteDownloadByVodId(vodId)
     }
-    
-    // Metadata
-    suspend fun getLastUpdateTime(): String? {
-        return dao.getMetadata("last_update")
-    }
-    
+
+    suspend fun getLastUpdateTime(): String? = dao.getMetadata("last_update")
+
     suspend fun setLastUpdateTime(time: String) {
         dao.setMetadata(MetadataEntity("last_update", time))
     }
-    
-    suspend fun getTotalItems(): Int {
-        return dao.getMetadata("total_items")?.toIntOrNull() ?: 0
-    }
-    
+
+    suspend fun getTotalItems(): Int = dao.getMetadata("total_items")?.toIntOrNull() ?: 0
+
     suspend fun setTotalItems(count: Int) {
         dao.setMetadata(MetadataEntity("total_items", count.toString()))
     }
+
+    suspend fun getDownloadedCount(): Int = dao.getDownloads().first().size
+
+    suspend fun getWatchDurationMs(): Long = dao.getWatchHistory().first().sumOf { it.progressMs }
 }
 
-// Extension functions
+private fun deleteDownloadedAsset(download: DownloadEntity) {
+    val directory = download.downloadDir?.let(::File)
+    if (directory?.exists() == true) {
+        directory.deleteRecursively()
+        return
+    }
+
+    download.localPath?.let { localPath ->
+        val localFile = File(localPath)
+        val targetDir = localFile.parentFile
+        if (targetDir?.exists() == true) {
+            targetDir.deleteRecursively()
+        } else {
+            if (localFile.exists()) {
+                localFile.delete()
+            }
+        }
+        Unit
+    }
+}
+
 private fun VideoListEntity.toVideoItem() = VideoItem(
     vodId = vodId,
     vodName = vodName,

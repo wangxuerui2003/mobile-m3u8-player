@@ -13,7 +13,7 @@ import com.example.m3u8player.data.model.*
         DownloadEntity::class,
         MetadataEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

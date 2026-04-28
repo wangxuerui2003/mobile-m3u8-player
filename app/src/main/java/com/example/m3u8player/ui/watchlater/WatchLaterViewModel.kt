@@ -2,7 +2,7 @@ package com.example.m3u8player.ui.watchlater
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.m3u8player.data.model.WatchLaterEntity
+import com.example.m3u8player.data.model.WatchLaterVideo
 import com.example.m3u8player.data.repository.VideoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,8 +16,8 @@ class WatchLaterViewModel @Inject constructor(
     private val repository: VideoRepository
 ) : ViewModel() {
     
-    private val _watchLater = MutableStateFlow<List<WatchLaterEntity>>(emptyList())
-    val watchLater: StateFlow<List<WatchLaterEntity>> = _watchLater.asStateFlow()
+    private val _watchLater = MutableStateFlow<List<WatchLaterVideo>>(emptyList())
+    val watchLater: StateFlow<List<WatchLaterVideo>> = _watchLater.asStateFlow()
     
     init {
         loadWatchLater()
@@ -25,7 +25,7 @@ class WatchLaterViewModel @Inject constructor(
     
     private fun loadWatchLater() {
         viewModelScope.launch {
-            repository.getWatchLater().collect { list ->
+            repository.getWatchLaterVideos().collect { list ->
                 _watchLater.value = list
             }
         }

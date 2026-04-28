@@ -10,6 +10,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import com.example.m3u8player.MainActivity
 import com.example.m3u8player.M3U8PlayerApplication
 import com.example.m3u8player.R
@@ -145,19 +146,15 @@ class DataUpdateService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val builder = Notification.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("正在更新数据")
             .setContentText(if (progress > 0) "进度: $progress%" else "准备中...")
             .setSmallIcon(android.R.drawable.ic_menu_rotate)
             .setContentIntent(pendingIntent)
             .setProgress(100, progress, progress == 0)
             .setOngoing(true)
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            builder.addAction(Notification.Action.Builder(null, "取消", stopIntent).build())
-        }
-
-        return builder.build()
+            .addAction(0, "取消", stopIntent)
+            .build()
     }
 
     private fun updateNotification(progress: Int) {

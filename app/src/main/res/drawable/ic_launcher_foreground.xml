@@ -3,38 +3,19 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-  <!-- Play button circle -->
-  <group android:scaleX="0.55"
-      android:scaleY="0.55"
-      android:translateX="24.2"
-      android:translateY="22">
-    <!-- Outer ring -->
     <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="2.5"
-        android:pathData="M36,18C26.06,18 18,26.06 18,36s8.06,18 18,18 18,-8.06 18,-18S45.94,18 36,18z"/>
-    <!-- Play triangle -->
+        android:fillColor="#0E3A57"
+        android:pathData="M20,20m12,0h44a12,12 0,0 1,12 12v44a12,12 0,0 1,-12 12h-44a12,12 0,0 1,-12 -12v-44a12,12 0,0 1,12 -12z" />
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M30,26L46,36L30,46Z"/>
-  </group>
-  <!-- Signal waves (stream indicator) -->
-  <group android:translateX="72" android:translateY="68">
+        android:fillColor="#15C7C5"
+        android:pathData="M23,63C29.5,72.5 40.5,79 53,79c19.3,0 35,-15.7 35,-35 0,-4.9 -1,-9.5 -2.9,-13.8l-7.8,3.4C78.4,36.8 79,40.4 79,44c0,14.4 -11.6,26 -26,26 -9.3,0 -17.8,-4.9 -22.4,-12.8z" />
     <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.8"
-        android:pathData="M0,8 Q4,4 8,8"/>
+        android:fillColor="#F6FAFF"
+        android:pathData="M44,35l24,17 -24,17z" />
     <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.5"
-        android:pathData="M-2,12 Q4,5 10,12"/>
+        android:fillColor="#82F3E9"
+        android:pathData="M71.5,28.5c4.8,3.7 8,9.5 8,16 0,3.8 -1.1,7.3 -2.9,10.4l5.8,2.8c2.5,-4 3.9,-8.6 3.9,-13.2 0,-8.5 -3.8,-16.2 -9.8,-21.4z" />
     <path
-        android:fillColor="#00000000"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.2"
-        android:pathData="M-4,16 Q4,6 12,16"/>
-  </group>
+        android:fillColor="#BFFBF5"
+        android:pathData="M26,26m10,0a10,10 0,1 1,20 0a10,10 0,1 1,-20 0" />
 </vector>

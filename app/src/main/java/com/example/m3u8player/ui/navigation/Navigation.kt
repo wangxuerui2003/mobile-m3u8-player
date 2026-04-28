@@ -5,10 +5,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -19,8 +17,6 @@ import com.example.m3u8player.ui.watchlater.WatchLaterScreen
 import com.example.m3u8player.ui.downloads.DownloadsScreen
 import com.example.m3u8player.ui.profile.ProfileScreen
 import com.example.m3u8player.ui.detail.DetailScreen
-import com.example.m3u8player.ui.detail.DetailViewModel
-import com.example.m3u8player.ui.detail.parseEpisodes
 import android.content.Intent
 import com.example.m3u8player.ui.player.PlayerActivity
 
@@ -112,24 +108,27 @@ fun AppNavigation(
             composable("detail/{vodId}") { backStackEntry ->
                 val vodId = backStackEntry.arguments?.getString("vodId")?.toIntOrNull() ?: return@composable
                 val context = androidx.compose.ui.platform.LocalContext.current
-                val viewModel: DetailViewModel = hiltViewModel()
-                val videoDetail by viewModel.videoDetail.collectAsState()
                 
                 DetailScreen(
                     vodId = vodId,
                     onBack = {
                         navController.popBackStack()
                     },
-                    onPlay = { vodId, episode ->
-                        val episodes = parseEpisodes(videoDetail?.vodPlayUrl ?: "")
-                        val episodeUrl = if (episodes.isNotEmpty()) episodes[episode].url else videoDetail?.vodPlayUrl
-                        
-                        val intent = Intent(context, PlayerActivity::class.java).apply {
-                            putExtra("vodId", vodId)
-                            putExtra("episode", episode)
-                            putExtra("videoUrl", episodeUrl)
+                    onPlay = { episode, detail ->
+                        val episodeUrl = episode.url.takeIf { it.isNotBlank() }
+                            ?: detail.vodPlayUrl.takeIf { it.isNotBlank() }
+
+                        if (episodeUrl != null) {
+                            val intent = Intent(context, PlayerActivity::class.java).apply {
+                                putExtra("vodId", detail.vodId)
+                                putExtra("vodName", detail.vodName)
+                                putExtra("episode", episode.index)
+                                putExtra("episodeName", episode.name)
+                                putExtra("coverUrl", detail.vodPic)
+                                putExtra("videoUrl", episodeUrl)
+                            }
+                            context.startActivity(intent)
                         }
-                        context.startActivity(intent)
                     }
                 )
             }

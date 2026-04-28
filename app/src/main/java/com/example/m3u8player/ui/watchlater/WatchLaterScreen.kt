@@ -9,9 +9,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.m3u8player.data.model.WatchLaterEntity
+import com.example.m3u8player.data.model.WatchLaterVideo
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,16 +60,18 @@ fun WatchLaterScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WatchLaterItem(
-    item: WatchLaterEntity,
+    item: WatchLaterVideo,
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
     
     Card(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier
@@ -77,11 +82,24 @@ fun WatchLaterItem(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "视频 ID: ${item.vodId}",
+                    text = item.vodName ?: "视频 ${item.vodId}",
                     style = MaterialTheme.typography.titleMedium
                 )
+                item.typeName?.takeIf { it.isNotBlank() }?.let { typeName ->
+                    Text(
+                        text = typeName,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                item.vodRemarks?.takeIf { it.isNotBlank() }?.let { remarks ->
+                    Text(
+                        text = remarks,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
                 Text(
-                    text = "添加时间: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm").format(item.addedAt)}",
+                    text = "添加时间: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(item.addedAt)}",
                     style = MaterialTheme.typography.bodySmall
                 )
             }

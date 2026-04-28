@@ -23,6 +23,8 @@ fun ProfileScreen(
 ) {
     val videoCount by viewModel.videoCount.collectAsState()
     val lastUpdateTime by viewModel.lastUpdateTime.collectAsState()
+    val watchDurationMs by viewModel.watchDurationMs.collectAsState()
+    val downloadCount by viewModel.downloadCount.collectAsState()
     val context = LocalContext.current
     val app = context.applicationContext as M3U8PlayerApplication
     val globalUpdateState by app.updateState.collectAsState()
@@ -57,8 +59,8 @@ fun ProfileScreen(
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     StatItem("总视频数", videoCount.toString())
-                    StatItem("观看时长", "0 小时")
-                    StatItem("下载数量", "0")
+                    StatItem("观看时长", formatWatchDuration(watchDurationMs))
+                    StatItem("下载数量", downloadCount.toString())
                 }
             }
             
@@ -155,6 +157,18 @@ fun ProfileScreen(
                 }
             }
         }
+    }
+}
+
+private fun formatWatchDuration(durationMs: Long): String {
+    val totalMinutes = durationMs / 1000 / 60
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+
+    return if (hours > 0) {
+        "${hours}小时${minutes}分钟"
+    } else {
+        "${minutes}分钟"
     }
 }
 

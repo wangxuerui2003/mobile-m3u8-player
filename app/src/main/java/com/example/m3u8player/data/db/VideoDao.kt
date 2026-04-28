@@ -31,6 +31,9 @@ interface VideoDao {
     @Query("SELECT COUNT(*) FROM video_list")
     suspend fun getVideoCount(): Int
 
+    @Query("SELECT COUNT(*) FROM video_list")
+    fun observeVideoCount(): Flow<Int>
+
     @Query("SELECT EXISTS(SELECT 1 FROM video_list WHERE vodId = :vodId)")
     suspend fun videoExists(vodId: Int): Boolean
     
@@ -43,6 +46,9 @@ interface VideoDao {
     
     @Query("DELETE FROM category")
     suspend fun deleteAllCategories()
+
+    @Query("SELECT COUNT(*) FROM category")
+    suspend fun getCategoryCount(): Int
     
     // Watch History
     @Query("SELECT * FROM watch_history ORDER BY lastWatchedAt DESC")
@@ -60,6 +66,23 @@ interface VideoDao {
     // Watch Later
     @Query("SELECT * FROM watch_later ORDER BY addedAt DESC")
     fun getWatchLater(): Flow<List<WatchLaterEntity>>
+
+    @Query(
+        """
+        SELECT watch_later.vodId AS vodId,
+               watch_later.addedAt AS addedAt,
+               video_list.vodName AS vodName,
+               video_list.vodRemarks AS vodRemarks,
+               video_list.typeName AS typeName
+        FROM watch_later
+        LEFT JOIN video_list ON watch_later.vodId = video_list.vodId
+        ORDER BY watch_later.addedAt DESC
+        """
+    )
+    fun getWatchLaterVideos(): Flow<List<WatchLaterVideo>>
+
+    @Query("SELECT EXISTS(SELECT 1 FROM watch_later WHERE vodId = :vodId)")
+    suspend fun isWatchLater(vodId: Int): Boolean
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertWatchLater(watchLater: WatchLaterEntity)
@@ -73,9 +96,24 @@ interface VideoDao {
     // Downloads
     @Query("SELECT * FROM downloads ORDER BY createdAt DESC")
     fun getDownloads(): Flow<List<DownloadEntity>>
+
+    @Query("SELECT * FROM downloads ORDER BY createdAt DESC")
+    suspend fun getDownloadsSnapshot(): List<DownloadEntity>
     
     @Query("SELECT * FROM downloads WHERE status = :status")
     fun getDownloadsByStatus(status: String): Flow<List<DownloadEntity>>
+
+    @Query("SELECT * FROM downloads WHERE status IN (:statuses) ORDER BY createdAt ASC")
+    suspend fun getDownloadsByStatuses(statuses: List<String>): List<DownloadEntity>
+
+    @Query("SELECT * FROM downloads WHERE id = :id")
+    suspend fun getDownloadById(id: Long): DownloadEntity?
+
+    @Query("SELECT * FROM downloads WHERE id IN (:ids)")
+    suspend fun getDownloadsByIds(ids: List<Long>): List<DownloadEntity>
+
+    @Query("SELECT * FROM downloads WHERE vodId = :vodId AND episode = :episode LIMIT 1")
+    suspend fun getDownloadByVodIdAndEpisode(vodId: Int, episode: Int): DownloadEntity?
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDownload(download: DownloadEntity): Long

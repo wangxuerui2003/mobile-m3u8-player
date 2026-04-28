@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.m3u8player.data.model.VideoListEntity
@@ -94,6 +95,18 @@ fun SearchBar(
                 contentDescription = null
             )
         },
+        trailingIcon = {
+            IconButton(onClick = onSearch) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "开始搜索"
+                )
+            }
+        },
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+            onSearch = { onSearch() }
+        ),
         singleLine = true
     )
 }

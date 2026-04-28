@@ -2,11 +2,14 @@ package com.example.m3u8player.data
 
 import android.content.Context
 import android.util.Log
+import androidx.room.withTransaction
+import com.example.m3u8player.data.db.AppDatabase
 import com.example.m3u8player.data.db.VideoDao
-import com.example.m3u8player.data.model.*
+import com.example.m3u8player.data.model.CategoryEntity
+import com.example.m3u8player.data.model.MetadataEntity
+import com.example.m3u8player.data.model.VideoListEntity
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
-import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -53,32 +56,32 @@ data class PresetVideo(
 @Singleton
 class PresetDataLoader @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val dao: VideoDao
+    private val dao: VideoDao,
+    private val database: AppDatabase
 ) {
     companion object {
         private const val TAG = "PresetDataLoader"
         private const val PRESET_FILE = "preset_videos.json"
+        private const val META_PRESET_FETCHED_AT = "preset_fetched_at"
+        private const val META_PRESET_VIDEO_COUNT = "preset_video_count"
+        private const val META_PRESET_CATEGORY_COUNT = "preset_category_count"
+        private const val META_PRESET_SOURCE_TOTAL = "preset_source_total"
     }
 
-    suspend fun loadIfNeeded() {
-        val existingCount = dao.getVideoCount()
-        if (existingCount > 0) {
-            Log.d(TAG, "Database already has $existingCount videos, skip preset loading")
-            return
-        }
+    suspend fun loadIfNeeded() = withContext(Dispatchers.IO) {
+        try {
+            val json = context.assets.open(PRESET_FILE).bufferedReader().use { it.readText() }
+            val data = Gson().fromJson(json, PresetData::class.java)
 
-        withContext(Dispatchers.IO) {
-            try {
-                val json = context.assets.open(PRESET_FILE).bufferedReader().use { it.readText() }
-                val data = Gson().fromJson(json, PresetData::class.java)
+            val categories = data.categories
+                .distinctBy { it.typeId }
+                .map { CategoryEntity(typeId = it.typeId, typeName = it.typeName) }
 
-                // Insert categories
-                dao.insertCategories(data.categories.map {
-                    CategoryEntity(typeId = it.typeId, typeName = it.typeName)
-                })
-
-                // Insert videos in batches
-                val videos = data.videos.map {
+            val videos = data.videos
+                .asReversed()
+                .distinctBy { it.vodId }
+                .asReversed()
+                .map {
                     VideoListEntity(
                         vodId = it.vodId,
                         vodName = it.vodName,
@@ -91,19 +94,60 @@ class PresetDataLoader @Inject constructor(
                     )
                 }
 
-                // Batch insert (Room has limits)
+            val expectedVideoCount = videos.size
+            val expectedCategoryCount = categories.size
+
+            val existingVideoCount = dao.getVideoCount()
+            val existingCategoryCount = dao.getCategoryCount()
+            val storedFetchedAt = dao.getMetadata(META_PRESET_FETCHED_AT)
+            val storedVideoCount = dao.getMetadata(META_PRESET_VIDEO_COUNT)?.toIntOrNull()
+            val storedCategoryCount = dao.getMetadata(META_PRESET_CATEGORY_COUNT)?.toIntOrNull()
+
+            val needsReload =
+                existingVideoCount == 0 ||
+                existingVideoCount != expectedVideoCount ||
+                existingCategoryCount != expectedCategoryCount ||
+                storedFetchedAt != data.fetchedAt ||
+                storedVideoCount != expectedVideoCount ||
+                storedCategoryCount != expectedCategoryCount
+
+            if (!needsReload) {
+                Log.d(
+                    TAG,
+                    "Preset data already matches asset: videos=$existingVideoCount categories=$existingCategoryCount fetchedAt=$storedFetchedAt"
+                )
+                return@withContext
+            }
+
+            Log.d(
+                TAG,
+                "Reload preset data: existingVideos=$existingVideoCount expectedVideos=$expectedVideoCount existingCategories=$existingCategoryCount expectedCategories=$expectedCategoryCount fetchedAt=${data.fetchedAt}"
+            )
+
+            database.withTransaction {
+                dao.deleteAllVideos()
+                dao.deleteAllCategories()
+
+                dao.insertCategories(categories)
                 videos.chunked(500).forEach { batch ->
                     dao.insertVideos(batch)
                 }
 
-                // Set metadata (use current timestamp since preset data is pre-fetched)
-                dao.setMetadata(MetadataEntity("last_update", System.currentTimeMillis().toString()))
-                dao.setMetadata(MetadataEntity("total_items", data.total.toString()))
-
-                Log.d(TAG, "Preset data loaded: ${videos.size} videos, ${data.categories.size} categories")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to load preset data", e)
+                val now = System.currentTimeMillis().toString()
+                dao.setMetadata(MetadataEntity("last_update", now))
+                dao.setMetadata(MetadataEntity("total_items", expectedVideoCount.toString()))
+                dao.setMetadata(MetadataEntity(META_PRESET_FETCHED_AT, data.fetchedAt))
+                dao.setMetadata(MetadataEntity(META_PRESET_VIDEO_COUNT, expectedVideoCount.toString()))
+                dao.setMetadata(MetadataEntity(META_PRESET_CATEGORY_COUNT, expectedCategoryCount.toString()))
+                dao.setMetadata(MetadataEntity(META_PRESET_SOURCE_TOTAL, data.total.toString()))
             }
+
+            Log.d(
+                TAG,
+                "Preset data loaded: videos=$expectedVideoCount categories=$expectedCategoryCount sourceTotal=${data.total}"
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to load preset data", e)
         }
     }
 }

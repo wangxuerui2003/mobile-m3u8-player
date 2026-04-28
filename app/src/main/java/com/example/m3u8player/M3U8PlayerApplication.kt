@@ -1,8 +1,10 @@
 package com.example.m3u8player
 
 import android.app.Application
+import com.example.m3u8player.data.ArtworkCache
 import com.example.m3u8player.data.PresetDataLoader
 import com.example.m3u8player.data.repository.VideoRepository
+import com.example.m3u8player.service.DownloadCoordinator
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +26,12 @@ class M3U8PlayerApplication : Application() {
     @Inject
     lateinit var presetDataLoader: PresetDataLoader
 
+    @Inject
+    lateinit var downloadCoordinator: DownloadCoordinator
+
+    @Inject
+    lateinit var artworkCache: ArtworkCache
+
     private val _updateState = MutableStateFlow(UpdateState())
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
@@ -37,6 +45,9 @@ class M3U8PlayerApplication : Application() {
         super.onCreate()
         applicationScope.launch {
             presetDataLoader.loadIfNeeded()
+        }
+        applicationScope.launch {
+            downloadCoordinator.restoreQueueState()
         }
     }
 }

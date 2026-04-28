@@ -1,18 +1,40 @@
 package com.example.m3u8player.ui.home
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.m3u8player.data.model.WatchHistoryEntity
+import coil.compose.AsyncImage
+import java.io.File
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -20,8 +42,8 @@ fun HomeScreen(
     onVideoClick: (Int) -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
-    val watchHistory by viewModel.watchHistory.collectAsState(initial = emptyList())
-    
+    val watchHistory by viewModel.watchHistory.collectAsState()
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -44,7 +66,7 @@ fun HomeScreen(
                     .fillMaxSize()
                     .padding(paddingValues),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
                     Text(
@@ -53,8 +75,8 @@ fun HomeScreen(
                         fontWeight = FontWeight.Bold
                     )
                 }
-                
-                items(watchHistory) { history ->
+
+                items(watchHistory, key = { it.vodId }) { history ->
                     WatchHistoryItem(
                         history = history,
                         onClick = { onVideoClick(history.vodId) }
@@ -68,9 +90,21 @@ fun HomeScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WatchHistoryItem(
-    history: WatchHistoryEntity,
+    history: RecentWatchItem,
     onClick: () -> Unit
 ) {
+    val progressFraction = if (history.durationMs > 0) {
+        (history.progressMs.toFloat() / history.durationMs.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
+    val coverModel = when {
+        !history.coverPath.isNullOrBlank() -> File(history.coverPath)
+        !history.coverUrl.isNullOrBlank() -> history.coverUrl
+        else -> null
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         onClick = onClick
@@ -78,35 +112,81 @@ fun WatchHistoryItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp)
-            )
-            
-            Spacer(modifier = Modifier.width(16.dp))
-            
+            if (coverModel != null) {
+                AsyncImage(
+                    model = coverModel,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(width = 76.dp, height = 102.dp)
+                        .clip(MaterialTheme.shapes.medium),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(width = 76.dp, height = 102.dp)
+                        .clip(MaterialTheme.shapes.medium),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("封面", color = Color.Gray)
+                }
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = history.vodName,
-                    style = MaterialTheme.typography.titleMedium
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
                 )
-                
-                if (history.durationMs > 0) {
-                    val progress = (history.progressMs.toFloat() / history.durationMs * 100).toInt()
-                    LinearProgressIndicator(
-                        progress = progress / 100f,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+
+                if (history.episodeName.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "已观看 ${progress}%",
-                        style = MaterialTheme.typography.bodySmall
+                        text = history.episodeName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                LinearProgressIndicator(
+                    progress = progressFraction,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = "已观看 ${progressFraction.times(100).roundToInt()}%",
+                    style = MaterialTheme.typography.bodySmall
+                )
+
+                Text(
+                    text = "${formatDuration(history.progressMs)} / ${formatDuration(history.durationMs)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
+    }
+}
+
+private fun formatDuration(durationMs: Long): String {
+    val safe = durationMs.coerceAtLeast(0L)
+    val totalSeconds = safe / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+
+    return if (hours > 0) {
+        String.format("%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format("%02d:%02d", minutes, seconds)
     }
 }

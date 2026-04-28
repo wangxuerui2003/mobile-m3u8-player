@@ -15,6 +15,9 @@ class PlayerActivity : ComponentActivity() {
         
         val vodId = intent.getIntExtra("vodId", 0)
         val episode = intent.getIntExtra("episode", 0)
+        val vodName = intent.getStringExtra("vodName").orEmpty()
+        val episodeName = intent.getStringExtra("episodeName").orEmpty()
+        val coverUrl = intent.getStringExtra("coverUrl")
         val videoUrl = intent.getStringExtra("videoUrl")
         
         setContent {
@@ -25,7 +28,10 @@ class PlayerActivity : ComponentActivity() {
                 ) {
                     PlayerScreen(
                         vodId = vodId,
+                        vodName = vodName,
                         episode = episode,
+                        episodeName = episodeName,
+                        coverUrl = coverUrl,
                         videoUrl = videoUrl,
                         onBack = { finish() }
                     )
