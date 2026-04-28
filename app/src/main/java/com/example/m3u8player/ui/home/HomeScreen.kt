@@ -19,11 +19,15 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,16 +43,30 @@ import kotlin.math.roundToInt
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    onVideoClick: (Int) -> Unit,
+    onPlayRequest: (HomePlaybackRequest) -> Unit,
     viewModel: HomeViewModel = hiltViewModel()
 ) {
     val watchHistory by viewModel.watchHistory.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(Unit) {
+        viewModel.playbackRequests.collect(onPlayRequest)
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.messages.collect { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("首页") }
             )
+        },
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
         }
     ) { paddingValues ->
         if (watchHistory.isEmpty()) {
@@ -79,7 +97,7 @@ fun HomeScreen(
                 items(watchHistory, key = { it.vodId }) { history ->
                     WatchHistoryItem(
                         history = history,
-                        onClick = { onVideoClick(history.vodId) }
+                        onClick = { viewModel.playRecentWatch(history) }
                     )
                 }
             }

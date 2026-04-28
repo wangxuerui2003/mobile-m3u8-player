@@ -2,6 +2,7 @@ package com.example.m3u8player.ui.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.m3u8player.data.model.SearchHistoryEntity
 import com.example.m3u8player.data.model.VideoListEntity
 import com.example.m3u8player.data.repository.VideoRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -27,7 +28,18 @@ class SearchViewModel @Inject constructor(
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
 
+    private val _searchHistory = MutableStateFlow<List<SearchHistoryEntity>>(emptyList())
+    val searchHistory: StateFlow<List<SearchHistoryEntity>> = _searchHistory.asStateFlow()
+
     private var searchJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            repository.getSearchHistory().collect { history ->
+                _searchHistory.value = history
+            }
+        }
+    }
     
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query
@@ -48,8 +60,26 @@ class SearchViewModel @Inject constructor(
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             _isSearching.value = true
+            repository.saveSearchQuery(query)
             _searchResults.value = repository.searchVideos(query).first()
             _isSearching.value = false
+        }
+    }
+
+    fun searchFromHistory(query: String) {
+        _searchQuery.value = query
+        search()
+    }
+
+    fun deleteSearchHistory(query: String) {
+        viewModelScope.launch {
+            repository.deleteSearchHistory(query)
+        }
+    }
+
+    fun clearSearchHistory() {
+        viewModelScope.launch {
+            repository.clearSearchHistory()
         }
     }
 }

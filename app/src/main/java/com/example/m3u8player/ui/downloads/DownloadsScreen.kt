@@ -1,5 +1,6 @@
 package com.example.m3u8player.ui.downloads
 
+import android.content.Intent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -57,6 +58,7 @@ import com.example.m3u8player.data.DownloadSettingsStore
 import com.example.m3u8player.data.model.DownloadEntity
 import com.example.m3u8player.data.model.DownloadStatus
 import com.example.m3u8player.service.DownloadNotificationHelper
+import com.example.m3u8player.ui.player.PlayerActivity
 import java.io.File
 import kotlin.math.roundToInt
 
@@ -66,6 +68,7 @@ fun DownloadsScreen(
     onVideoClick: (Int) -> Unit,
     viewModel: DownloadsViewModel = hiltViewModel()
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
     val downloads by viewModel.downloads.collectAsState()
     val selectedIds by viewModel.selectedIds.collectAsState()
     val concurrency by viewModel.concurrency.collectAsState()
@@ -142,6 +145,27 @@ fun DownloadsScreen(
                         onClick = {
                             if (isSelectionMode) {
                                 viewModel.toggleSelection(download.id)
+                            } else if (!download.localPath.isNullOrBlank() && download.status in setOf(
+                                    DownloadStatus.COMPLETED,
+                                    DownloadStatus.DOWNLOADING,
+                                    DownloadStatus.PAUSED
+                                )
+                            ) {
+                                context.startActivity(
+                                    Intent(context, PlayerActivity::class.java).apply {
+                                        putExtra("vodId", download.vodId)
+                                        putExtra("vodName", download.vodName)
+                                        putExtra("episode", download.episode)
+                                        putExtra("episodeName", download.episodeName)
+                                        putExtra("coverUrl", download.coverUrl)
+                                        putExtra("videoUrl", download.videoUrl)
+                                        putExtra("localPlaylistPath", download.localPath)
+                                        putExtra("startPositionMs", 0L)
+                                        putExtra("isPartialDownload", download.status != DownloadStatus.COMPLETED)
+                                        putExtra("downloadedDurationMs", download.downloadedDurationMs)
+                                        putExtra("totalDurationMs", download.totalDurationMs)
+                                    }
+                                )
                             } else {
                                 onVideoClick(download.vodId)
                             }

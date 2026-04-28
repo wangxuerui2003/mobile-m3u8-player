@@ -70,9 +70,23 @@ fun AppNavigation(
             modifier = Modifier.padding(paddingValues)
         ) {
             composable(Screen.Home.route) {
+                val context = androidx.compose.ui.platform.LocalContext.current
                 HomeScreen(
-                    onVideoClick = { vodId ->
-                        navController.navigate("detail/$vodId")
+                    onPlayRequest = { request ->
+                        val intent = Intent(context, PlayerActivity::class.java).apply {
+                            putExtra("vodId", request.vodId)
+                            putExtra("vodName", request.vodName)
+                            putExtra("episode", request.episode)
+                            putExtra("episodeName", request.episodeName)
+                            putExtra("coverUrl", request.coverUrl)
+                            putExtra("startPositionMs", request.startPositionMs)
+                            putExtra("videoUrl", request.videoUrl)
+                            putExtra("localPlaylistPath", request.localPlaylistPath)
+                            putExtra("isPartialDownload", request.isPartialDownload)
+                            putExtra("downloadedDurationMs", request.downloadedDurationMs)
+                            putExtra("totalDurationMs", request.totalDurationMs)
+                        }
+                        context.startActivity(intent)
                     }
                 )
             }
@@ -126,6 +140,8 @@ fun AppNavigation(
                                 putExtra("episodeName", episode.name)
                                 putExtra("coverUrl", detail.vodPic)
                                 putExtra("videoUrl", episodeUrl)
+                                putExtra("startPositionMs", 0L)
+                                putExtra("totalDurationMs", 0L)
                             }
                             context.startActivity(intent)
                         }

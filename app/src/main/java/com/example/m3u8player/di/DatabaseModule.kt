@@ -38,6 +38,26 @@ object DatabaseModule {
             database.execSQL("UPDATE downloads SET updatedAt = createdAt WHERE updatedAt = 0")
         }
     }
+
+    private val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS search_history (
+                    query TEXT NOT NULL PRIMARY KEY,
+                    searchedAt INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+        }
+    }
+
+    private val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE downloads ADD COLUMN downloadedDurationMs INTEGER NOT NULL DEFAULT 0")
+            database.execSQL("ALTER TABLE downloads ADD COLUMN totalDurationMs INTEGER NOT NULL DEFAULT 0")
+        }
+    }
     
     @Provides
     @Singleton
@@ -47,7 +67,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "okzyw_data.db"
         )
-        .addMigrations(MIGRATION_1_2)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
         .build()
     }
     

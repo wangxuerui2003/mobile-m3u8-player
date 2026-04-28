@@ -44,7 +44,9 @@ class DownloadWorker(
                 totalBytes = downloadedPlaylist.totalBytes,
                 downloadedBytes = downloadedPlaylist.totalBytes,
                 downloadedSegments = downloadedPlaylist.totalSegments,
-                totalSegments = downloadedPlaylist.totalSegments
+                totalSegments = downloadedPlaylist.totalSegments,
+                totalDurationMs = downloadedPlaylist.totalDurationMs,
+                downloadedDurationMs = downloadedPlaylist.totalDurationMs
             )
             DownloadNotificationHelper.cancel(applicationContext, downloadId)
             Result.success()
@@ -76,16 +78,24 @@ class DownloadWorker(
                 downloadDir.mkdirs()
             }
 
+            val localM3U8 = File(downloadDir, "video_${download.episode + 1}.m3u8")
+            if (!localM3U8.exists()) {
+                localM3U8.writeText(createLocalM3U8(emptyList(), isComplete = false))
+            }
+
             repository.markDownloadRunning(
                 id = download.id,
                 downloadDir = downloadDir.absolutePath,
-                totalSegments = segments.size
+                localPath = localM3U8.absolutePath,
+                totalSegments = segments.size,
+                totalDurationMs = segments.sumOf { it.durationMs }
             )
 
             updateForeground(download.id)
 
             var downloadedBytes = 0L
             var downloadedSegments = 0
+            var downloadedDurationMs = 0L
             val downloadedFiles = mutableListOf<DownloadedSegment>()
 
             segments.forEachIndexed { index, segment ->
@@ -97,8 +107,18 @@ class DownloadWorker(
                 if (segmentFile.exists() && segmentFile.length() > 0) {
                     downloadedBytes += segmentFile.length()
                     downloadedSegments++
+                    downloadedDurationMs += segment.durationMs
                     downloadedFiles += DownloadedSegment(segmentFile, segment.durationSec)
-                    updateDownloadProgress(download.id, downloadedBytes, downloadedSegments, segments.size, 0)
+                    localM3U8.writeText(createLocalM3U8(downloadedFiles, isComplete = false))
+                    updateDownloadProgress(
+                        download.id,
+                        downloadedBytes,
+                        downloadedSegments,
+                        segments.size,
+                        downloadedDurationMs,
+                        segments.sumOf { it.durationMs },
+                        0
+                    )
                     return@forEachIndexed
                 }
 
@@ -127,23 +147,27 @@ class DownloadWorker(
 
                 downloadedBytes += segmentBytes
                 downloadedSegments++
+                downloadedDurationMs += segment.durationMs
                 downloadedFiles += DownloadedSegment(segmentFile, segment.durationSec)
+                localM3U8.writeText(createLocalM3U8(downloadedFiles, isComplete = false))
 
                 updateDownloadProgress(
                     download.id,
                     downloadedBytes,
                     downloadedSegments,
                     segments.size,
+                    downloadedDurationMs,
+                    segments.sumOf { it.durationMs },
                     speedBytesPerSec
                 )
             }
 
-            val localM3U8 = File(downloadDir, "video_${download.episode + 1}.m3u8")
-            localM3U8.writeText(createLocalM3U8(downloadedFiles))
+            localM3U8.writeText(createLocalM3U8(downloadedFiles, isComplete = true))
             DownloadedPlaylist(
                 playlistFile = localM3U8,
                 totalBytes = downloadedBytes + localM3U8.length(),
-                totalSegments = segments.size
+                totalSegments = segments.size,
+                totalDurationMs = segments.sumOf { it.durationMs }
             )
         }
 
@@ -152,6 +176,8 @@ class DownloadWorker(
         downloadedBytes: Long,
         downloadedSegments: Int,
         totalSegments: Int,
+        downloadedDurationMs: Long,
+        totalDurationMs: Long,
         speedBytesPerSec: Long
     ) {
         val progress = if (totalSegments > 0) downloadedSegments * 100f / totalSegments else 0f
@@ -162,6 +188,8 @@ class DownloadWorker(
             totalBytes = downloadedBytes,
             downloadedSegments = downloadedSegments,
             totalSegments = totalSegments,
+            downloadedDurationMs = downloadedDurationMs,
+            totalDurationMs = totalDurationMs,
             speedBytesPerSec = speedBytesPerSec
         )
         updateForeground(downloadId)
@@ -169,7 +197,9 @@ class DownloadWorker(
 
     private suspend fun updateForeground(downloadId: Long) {
         val currentDownload = repository.getDownload(downloadId) ?: return
-        setForeground(DownloadNotificationHelper.buildForegroundInfo(applicationContext, currentDownload))
+        val foregroundInfo = DownloadNotificationHelper.buildForegroundInfo(applicationContext, currentDownload)
+        setForeground(foregroundInfo)
+        DownloadNotificationHelper.notifyProgress(applicationContext, currentDownload)
     }
 
     private fun resolveSegments(url: String): List<PlaylistSegment> {
@@ -210,7 +240,14 @@ class DownloadWorker(
                         val resolvedUrl = line.toHttpUrlOrNull()?.toString()
                             ?: baseHttpUrl?.resolve(line)?.toString()
                         if (resolvedUrl != null) {
-                            add(PlaylistSegment(url = resolvedUrl, durationSec = pendingDuration ?: "10.0"))
+                            val durationSec = pendingDuration ?: "10.0"
+                            add(
+                                PlaylistSegment(
+                                    url = resolvedUrl,
+                                    durationSec = durationSec,
+                                    durationMs = durationSec.toDoubleOrNull()?.times(1000)?.toLong() ?: 10_000L
+                                )
+                            )
                         }
                         pendingDuration = null
                     }
@@ -219,15 +256,19 @@ class DownloadWorker(
         }
     }
 
-    private fun createLocalM3U8(files: List<DownloadedSegment>): String {
+    private fun createLocalM3U8(files: List<DownloadedSegment>, isComplete: Boolean): String {
         return buildString {
             appendLine("#EXTM3U")
             appendLine("#EXT-X-VERSION:3")
+            appendLine("#EXT-X-TARGETDURATION:10")
+            appendLine("#EXT-X-MEDIA-SEQUENCE:0")
             files.forEach { file ->
                 appendLine("#EXTINF:${file.durationSec},")
                 appendLine(file.file.toURI().toString())
             }
-            appendLine("#EXT-X-ENDLIST")
+            if (isComplete) {
+                appendLine("#EXT-X-ENDLIST")
+            }
         }
     }
 
@@ -238,7 +279,8 @@ class DownloadWorker(
 
 private data class PlaylistSegment(
     val url: String,
-    val durationSec: String
+    val durationSec: String,
+    val durationMs: Long
 )
 
 private data class DownloadedSegment(
@@ -249,5 +291,6 @@ private data class DownloadedSegment(
 private data class DownloadedPlaylist(
     val playlistFile: File,
     val totalBytes: Long,
-    val totalSegments: Int
+    val totalSegments: Int,
+    val totalDurationMs: Long
 )

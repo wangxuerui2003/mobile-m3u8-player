@@ -7,6 +7,7 @@ import com.example.m3u8player.data.model.CategoryEntity
 import com.example.m3u8player.data.model.DownloadEntity
 import com.example.m3u8player.data.model.DownloadStatus
 import com.example.m3u8player.data.model.MetadataEntity
+import com.example.m3u8player.data.model.SearchHistoryEntity
 import com.example.m3u8player.data.model.VideoDetail
 import com.example.m3u8player.data.model.VideoItem
 import com.example.m3u8player.data.model.VideoListEntity
@@ -36,6 +37,24 @@ class VideoRepository @Inject constructor(
 
     fun searchVideos(query: String): Flow<List<VideoListEntity>> {
         return dao.searchVideos(query)
+    }
+
+    fun getSearchHistory(limit: Int = 20): Flow<List<SearchHistoryEntity>> {
+        return dao.getSearchHistory(limit)
+    }
+
+    suspend fun saveSearchQuery(query: String) {
+        val normalized = query.trim()
+        if (normalized.isBlank()) return
+        dao.insertSearchHistory(SearchHistoryEntity(query = normalized))
+    }
+
+    suspend fun deleteSearchHistory(query: String) {
+        dao.deleteSearchHistory(query)
+    }
+
+    suspend fun clearSearchHistory() {
+        dao.clearSearchHistory()
     }
 
     fun getVideosByType(typeId: Int, page: Int = 1, pageSize: Int = 20): Flow<List<VideoItem>> {
@@ -189,6 +208,8 @@ class VideoRepository @Inject constructor(
         return dao.getDownloadByVodIdAndEpisode(vodId, episode)
     }
 
+    fun getDownloadsByVodId(vodId: Int): Flow<List<DownloadEntity>> = dao.getDownloadsByVodId(vodId)
+
     suspend fun markDownloadEnqueued(id: Long, workId: String) {
         dao.getDownloadById(id)?.let { download ->
             dao.updateDownload(
@@ -220,7 +241,9 @@ class VideoRepository @Inject constructor(
     suspend fun markDownloadRunning(
         id: Long,
         downloadDir: String,
+        localPath: String? = null,
         totalSegments: Int,
+        totalDurationMs: Long = 0,
         totalBytes: Long = 0
     ) {
         dao.getDownloadById(id)?.let { download ->
@@ -228,7 +251,9 @@ class VideoRepository @Inject constructor(
                 download.copy(
                     status = DownloadStatus.DOWNLOADING,
                     downloadDir = downloadDir,
+                    localPath = localPath ?: download.localPath,
                     totalSegments = totalSegments,
+                    totalDurationMs = if (totalDurationMs > 0) totalDurationMs else download.totalDurationMs,
                     totalBytes = totalBytes,
                     speedBytesPerSec = 0,
                     updatedAt = System.currentTimeMillis(),
@@ -270,7 +295,9 @@ class VideoRepository @Inject constructor(
         totalBytes: Long,
         downloadedBytes: Long,
         downloadedSegments: Int,
-        totalSegments: Int
+        totalSegments: Int,
+        totalDurationMs: Long,
+        downloadedDurationMs: Long
     ) {
         dao.getDownloadById(id)?.let { download ->
             dao.updateDownload(
@@ -282,6 +309,8 @@ class VideoRepository @Inject constructor(
                     downloadedBytes = downloadedBytes,
                     downloadedSegments = downloadedSegments,
                     totalSegments = totalSegments,
+                    totalDurationMs = totalDurationMs,
+                    downloadedDurationMs = downloadedDurationMs,
                     progress = 100f,
                     speedBytesPerSec = 0,
                     updatedAt = System.currentTimeMillis(),
@@ -298,6 +327,8 @@ class VideoRepository @Inject constructor(
         totalBytes: Long,
         downloadedSegments: Int,
         totalSegments: Int,
+        downloadedDurationMs: Long,
+        totalDurationMs: Long,
         speedBytesPerSec: Long
     ) {
         dao.getDownloadById(id)?.let { download ->
@@ -309,6 +340,8 @@ class VideoRepository @Inject constructor(
                     totalBytes = totalBytes,
                     downloadedSegments = downloadedSegments,
                     totalSegments = totalSegments,
+                    downloadedDurationMs = downloadedDurationMs,
+                    totalDurationMs = if (totalDurationMs > 0) totalDurationMs else download.totalDurationMs,
                     speedBytesPerSec = speedBytesPerSec,
                     updatedAt = System.currentTimeMillis()
                 )

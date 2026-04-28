@@ -44,6 +44,13 @@ data class WatchLaterEntity(
     val addedAt: Long = System.currentTimeMillis()
 )
 
+@Entity(tableName = "search_history")
+data class SearchHistoryEntity(
+    @PrimaryKey
+    val query: String,
+    val searchedAt: Long = System.currentTimeMillis()
+)
+
 data class WatchLaterVideo(
     val vodId: Int,
     val addedAt: Long,
@@ -71,6 +78,8 @@ data class DownloadEntity(
     val downloadedBytes: Long = 0,
     val downloadedSegments: Int = 0,
     val totalSegments: Int = 0,
+    val downloadedDurationMs: Long = 0,
+    val totalDurationMs: Long = 0,
     val progress: Float = 0f,
     val speedBytesPerSec: Long = 0,
     val createdAt: Long = System.currentTimeMillis(),

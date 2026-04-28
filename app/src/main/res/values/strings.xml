@@ -53,7 +53,6 @@
     <!-- Player -->
     <string name="player_speed">倍速</string>
     <string name="player_quality">画质</string>
-    <string name="player_cast">投屏</string>
     <string name="player_episode">选集</string>
     
     <!-- Data Update -->

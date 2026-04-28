@@ -109,6 +109,11 @@ object DownloadNotificationHelper {
         manager.cancel(notificationId(downloadId))
     }
 
+    fun notifyProgress(context: Context, download: DownloadEntity) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.notify(notificationId(download.id), buildProgressNotification(context, download))
+    }
+
     fun notificationId(downloadId: Long): Int {
         return 20_000 + (downloadId % 100_000).toInt()
     }
