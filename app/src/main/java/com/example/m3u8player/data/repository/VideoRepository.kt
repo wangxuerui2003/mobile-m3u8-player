@@ -6,6 +6,7 @@ import com.example.m3u8player.data.model.Category
 import com.example.m3u8player.data.model.CategoryEntity
 import com.example.m3u8player.data.model.DownloadEntity
 import com.example.m3u8player.data.model.DownloadStatus
+import com.example.m3u8player.data.model.EpisodeWatchHistoryEntity
 import com.example.m3u8player.data.model.MetadataEntity
 import com.example.m3u8player.data.model.SearchHistoryEntity
 import com.example.m3u8player.data.model.VideoDetail
@@ -161,12 +162,25 @@ class VideoRepository @Inject constructor(
 
     fun getWatchHistory(): Flow<List<WatchHistoryEntity>> = dao.getWatchHistory()
 
+    fun getEpisodeWatchHistory(): Flow<List<EpisodeWatchHistoryEntity>> = dao.getEpisodeWatchHistory()
+
+    fun getEpisodeWatchHistoryByVodId(vodId: Int): Flow<List<EpisodeWatchHistoryEntity>> {
+        return dao.getEpisodeWatchHistoryByVodId(vodId)
+    }
+
     suspend fun saveWatchHistory(history: WatchHistoryEntity) {
         dao.insertWatchHistory(history)
+        dao.insertEpisodeWatchHistory(history.toEpisodeWatchHistoryEntity())
     }
 
     suspend fun deleteWatchHistory(vodId: Int) {
         dao.deleteWatchHistory(vodId)
+        dao.deleteEpisodeWatchHistoryByVodId(vodId)
+    }
+
+    suspend fun clearWatchHistory() {
+        dao.clearWatchHistory()
+        dao.clearEpisodeWatchHistory()
     }
 
     fun getWatchLater(): Flow<List<WatchLaterEntity>> = dao.getWatchLater()
@@ -382,6 +396,18 @@ class VideoRepository @Inject constructor(
 
     suspend fun getWatchDurationMs(): Long = dao.getWatchHistory().first().sumOf { it.progressMs }
 }
+
+private fun WatchHistoryEntity.toEpisodeWatchHistoryEntity() = EpisodeWatchHistoryEntity(
+    vodId = vodId,
+    vodName = vodName,
+    episode = episode,
+    episodeName = episodeName,
+    coverUrl = coverUrl,
+    coverPath = coverPath,
+    progressMs = progressMs,
+    durationMs = durationMs,
+    lastWatchedAt = lastWatchedAt
+)
 
 private fun deleteDownloadedAsset(download: DownloadEntity) {
     val directory = download.downloadDir?.let(::File)

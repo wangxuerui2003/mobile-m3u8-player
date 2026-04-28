@@ -37,6 +37,22 @@ data class WatchHistoryEntity(
     val lastWatchedAt: Long = System.currentTimeMillis()
 )
 
+@Entity(
+    tableName = "episode_watch_history",
+    primaryKeys = ["vodId", "episode"]
+)
+data class EpisodeWatchHistoryEntity(
+    val vodId: Int,
+    val vodName: String,
+    val episode: Int = 0,
+    val episodeName: String = "",
+    val coverUrl: String? = null,
+    val coverPath: String? = null,
+    val progressMs: Long = 0,
+    val durationMs: Long = 0,
+    val lastWatchedAt: Long = System.currentTimeMillis()
+)
+
 @Entity(tableName = "watch_later")
 data class WatchLaterEntity(
     @PrimaryKey

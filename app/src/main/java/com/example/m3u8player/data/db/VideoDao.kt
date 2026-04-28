@@ -68,12 +68,27 @@ interface VideoDao {
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertWatchHistory(history: WatchHistoryEntity)
+
+    @Query("SELECT * FROM episode_watch_history ORDER BY lastWatchedAt DESC")
+    fun getEpisodeWatchHistory(): Flow<List<EpisodeWatchHistoryEntity>>
+
+    @Query("SELECT * FROM episode_watch_history WHERE vodId = :vodId ORDER BY episode ASC")
+    fun getEpisodeWatchHistoryByVodId(vodId: Int): Flow<List<EpisodeWatchHistoryEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertEpisodeWatchHistory(history: EpisodeWatchHistoryEntity)
     
     @Query("DELETE FROM watch_history WHERE vodId = :vodId")
     suspend fun deleteWatchHistory(vodId: Int)
+
+    @Query("DELETE FROM episode_watch_history WHERE vodId = :vodId")
+    suspend fun deleteEpisodeWatchHistoryByVodId(vodId: Int)
     
     @Query("DELETE FROM watch_history")
     suspend fun clearWatchHistory()
+
+    @Query("DELETE FROM episode_watch_history")
+    suspend fun clearEpisodeWatchHistory()
     
     // Watch Later
     @Query("SELECT * FROM watch_later ORDER BY addedAt DESC")

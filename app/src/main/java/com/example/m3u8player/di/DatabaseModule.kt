@@ -58,6 +58,38 @@ object DatabaseModule {
             database.execSQL("ALTER TABLE downloads ADD COLUMN totalDurationMs INTEGER NOT NULL DEFAULT 0")
         }
     }
+
+    private val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS episode_watch_history (
+                    vodId INTEGER NOT NULL,
+                    vodName TEXT NOT NULL,
+                    episode INTEGER NOT NULL,
+                    episodeName TEXT NOT NULL,
+                    coverUrl TEXT,
+                    coverPath TEXT,
+                    progressMs INTEGER NOT NULL,
+                    durationMs INTEGER NOT NULL,
+                    lastWatchedAt INTEGER NOT NULL,
+                    PRIMARY KEY(vodId, episode)
+                )
+                """.trimIndent()
+            )
+
+            database.execSQL(
+                """
+                INSERT OR REPLACE INTO episode_watch_history (
+                    vodId, vodName, episode, episodeName, coverUrl, coverPath, progressMs, durationMs, lastWatchedAt
+                )
+                SELECT
+                    vodId, vodName, episode, episodeName, coverUrl, coverPath, progressMs, durationMs, lastWatchedAt
+                FROM watch_history
+                """.trimIndent()
+            )
+        }
+    }
     
     @Provides
     @Singleton
@@ -67,7 +99,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "okzyw_data.db"
         )
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
         .build()
     }
     

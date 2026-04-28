@@ -23,12 +23,15 @@ import androidx.compose.material.icons.filled.CheckBox
 import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -69,9 +72,11 @@ fun DownloadsScreen(
     viewModel: DownloadsViewModel = hiltViewModel()
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val downloads by viewModel.downloads.collectAsState()
+    val downloadGroups by viewModel.downloadGroups.collectAsState()
     val selectedIds by viewModel.selectedIds.collectAsState()
+    val expandedVodIds by viewModel.expandedVodIds.collectAsState()
     val concurrency by viewModel.concurrency.collectAsState()
+    val totalEpisodeCount = downloadGroups.sumOf { it.episodeCount }
     val isSelectionMode = selectedIds.isNotEmpty()
 
     var showSettingsSheet by remember { mutableStateOf(false) }
@@ -94,7 +99,7 @@ fun DownloadsScreen(
                     if (isSelectionMode) {
                         IconButton(onClick = { viewModel.toggleSelectAll() }) {
                             Icon(
-                                if (selectedIds.size == downloads.size) {
+                                if (selectedIds.size == totalEpisodeCount && totalEpisodeCount > 0) {
                                     Icons.Default.CheckBox
                                 } else {
                                     Icons.Default.CheckBoxOutlineBlank
@@ -120,7 +125,7 @@ fun DownloadsScreen(
             )
         }
     ) { paddingValues ->
-        if (downloads.isEmpty()) {
+        if (downloadGroups.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -135,50 +140,36 @@ fun DownloadsScreen(
                     .fillMaxSize()
                     .padding(paddingValues),
                 contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(downloads, key = { it.id }) { download ->
-                    DownloadItem(
-                        download = download,
-                        selected = download.id in selectedIds,
+                items(downloadGroups, key = { it.vodId }) { group ->
+                    DownloadGroupCard(
+                        group = group,
+                        expanded = group.vodId in expandedVodIds,
                         selectionMode = isSelectionMode,
-                        onClick = {
-                            if (isSelectionMode) {
-                                viewModel.toggleSelection(download.id)
-                            } else if (!download.localPath.isNullOrBlank() && download.status in setOf(
+                        selectedIds = selectedIds,
+                        onToggleExpanded = { viewModel.toggleExpanded(group.vodId) },
+                        onToggleGroupSelection = { viewModel.toggleSelectGroup(group.vodId) },
+                        onStartGroup = { viewModel.startGroupDownloads(group.vodId) },
+                        onPauseGroup = { viewModel.pauseGroupDownloads(group.vodId) },
+                        onDeleteGroup = { pendingDeleteIds = group.episodes.map { it.id }.toSet() },
+                        onEpisodeClick = { download ->
+                            if (!download.localPath.isNullOrBlank() && download.status in setOf(
                                     DownloadStatus.COMPLETED,
                                     DownloadStatus.DOWNLOADING,
                                     DownloadStatus.PAUSED
                                 )
                             ) {
-                                context.startActivity(
-                                    Intent(context, PlayerActivity::class.java).apply {
-                                        putExtra("vodId", download.vodId)
-                                        putExtra("vodName", download.vodName)
-                                        putExtra("episode", download.episode)
-                                        putExtra("episodeName", download.episodeName)
-                                        putExtra("coverUrl", download.coverUrl)
-                                        putExtra("videoUrl", download.videoUrl)
-                                        putExtra("localPlaylistPath", download.localPath)
-                                        putExtra("startPositionMs", 0L)
-                                        putExtra("isPartialDownload", download.status != DownloadStatus.COMPLETED)
-                                        putExtra("downloadedDurationMs", download.downloadedDurationMs)
-                                        putExtra("totalDurationMs", download.totalDurationMs)
-                                    }
-                                )
+                                context.startActivity(playDownloadIntent(context, download))
                             } else {
                                 onVideoClick(download.vodId)
                             }
                         },
-                        onLongClick = {
-                            viewModel.enterSelection(download.id)
-                        },
-                        onToggleSelection = {
-                            viewModel.toggleSelection(download.id)
-                        },
-                        onStart = { viewModel.startDownload(download.id) },
-                        onPause = { viewModel.pauseDownload(download.id) },
-                        onDelete = { pendingDeleteIds = setOf(download.id) }
+                        onEpisodeLongClick = { download -> viewModel.enterSelection(download.id) },
+                        onEpisodeToggleSelection = { download -> viewModel.toggleSelection(download.id) },
+                        onEpisodeStart = { download -> viewModel.startDownload(download.id) },
+                        onEpisodePause = { download -> viewModel.pauseDownload(download.id) },
+                        onEpisodeDelete = { download -> pendingDeleteIds = setOf(download.id) }
                     )
                 }
             }
@@ -262,7 +253,151 @@ fun DownloadsScreen(
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun DownloadItem(
+private fun DownloadGroupCard(
+    group: DownloadGroup,
+    expanded: Boolean,
+    selectionMode: Boolean,
+    selectedIds: Set<Long>,
+    onToggleExpanded: () -> Unit,
+    onToggleGroupSelection: () -> Unit,
+    onStartGroup: () -> Unit,
+    onPauseGroup: () -> Unit,
+    onDeleteGroup: () -> Unit,
+    onEpisodeClick: (DownloadEntity) -> Unit,
+    onEpisodeLongClick: (DownloadEntity) -> Unit,
+    onEpisodeToggleSelection: (DownloadEntity) -> Unit,
+    onEpisodeStart: (DownloadEntity) -> Unit,
+    onEpisodePause: (DownloadEntity) -> Unit,
+    onEpisodeDelete: (DownloadEntity) -> Unit
+) {
+    val coverModel = when {
+        !group.coverPath.isNullOrBlank() -> File(group.coverPath)
+        !group.coverUrl.isNullOrBlank() -> group.coverUrl
+        else -> null
+    }
+    val allSelected = group.episodes.all { it.id in selectedIds }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (selectionMode) {
+                    Checkbox(
+                        checked = allSelected,
+                        onCheckedChange = { onToggleGroupSelection() }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+
+                DownloadCover(coverModel = coverModel)
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .combinedClickable(
+                            onClick = onToggleExpanded,
+                            onLongClick = onToggleExpanded
+                        )
+                ) {
+                    Text(
+                        text = group.vodName,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "${group.episodeCount} 集 · 已完成 ${group.completedCount} · 下载中 ${group.downloadingCount}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (group.aggregateProgress > 0f || group.downloadingCount > 0) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LinearProgressIndicator(
+                            progress = (group.aggregateProgress / 100f).coerceIn(0f, 1f),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = buildString {
+                                append("${group.aggregateProgress.roundToInt()}%")
+                                if (group.aggregateSpeedBytesPerSec > 0) {
+                                    append(" · ${DownloadNotificationHelper.formatSpeed(group.aggregateSpeedBytesPerSec)}")
+                                }
+                                if (group.pausedCount > 0) {
+                                    append(" · 暂停 ${group.pausedCount}")
+                                }
+                                if (group.failedCount > 0) {
+                                    append(" · 失败 ${group.failedCount}")
+                                }
+                            },
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+
+                IconButton(onClick = onStartGroup) {
+                    Icon(Icons.Default.PlayArrow, contentDescription = "开始全部")
+                }
+                IconButton(onClick = onPauseGroup) {
+                    Icon(Icons.Default.Pause, contentDescription = "暂停全部")
+                }
+                IconButton(onClick = onDeleteGroup) {
+                    Icon(Icons.Default.Delete, contentDescription = "删除全部")
+                }
+                IconButton(onClick = onToggleExpanded) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = if (expanded) "收起剧集" else "展开剧集"
+                    )
+                }
+            }
+
+            if (expanded) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Divider()
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (selectionMode) {
+                    TextButton(
+                        onClick = onToggleGroupSelection,
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Text(if (allSelected) "取消本组全选" else "本组全选")
+                    }
+                }
+
+                group.episodes.forEachIndexed { index, episode ->
+                    DownloadItem(
+                        download = episode,
+                        selected = episode.id in selectedIds,
+                        selectionMode = selectionMode,
+                        onClick = { onEpisodeClick(episode) },
+                        onLongClick = { onEpisodeLongClick(episode) },
+                        onToggleSelection = { onEpisodeToggleSelection(episode) },
+                        onStart = { onEpisodeStart(episode) },
+                        onPause = { onEpisodePause(episode) },
+                        onDelete = { onEpisodeDelete(episode) }
+                    )
+                    if (index != group.episodes.lastIndex) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
+@Composable
+private fun DownloadItem(
     download: DownloadEntity,
     selected: Boolean,
     selectionMode: Boolean,
@@ -301,17 +436,10 @@ fun DownloadItem(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = download.vodName,
-                    style = MaterialTheme.typography.titleMedium,
+                    text = download.episodeName.ifBlank { download.vodName },
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )
-                if (download.episodeName.isNotBlank()) {
-                    Text(
-                        text = download.episodeName,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
                 Text(
                     text = "状态: ${getStatusText(download.status)}",
                     style = MaterialTheme.typography.bodySmall
@@ -373,10 +501,14 @@ private fun DownloadCover(download: DownloadEntity) {
         !download.coverUrl.isNullOrBlank() -> download.coverUrl
         else -> null
     }
+    DownloadCover(coverModel = imageModel)
+}
 
-    if (imageModel != null) {
+@Composable
+private fun DownloadCover(coverModel: Any?) {
+    if (coverModel != null) {
         AsyncImage(
-            model = imageModel,
+            model = coverModel,
             contentDescription = null,
             modifier = Modifier
                 .size(width = 72.dp, height = 96.dp)
@@ -393,6 +525,25 @@ private fun DownloadCover(download: DownloadEntity) {
         ) {
             Text("封面", style = MaterialTheme.typography.bodySmall)
         }
+    }
+}
+
+private fun playDownloadIntent(
+    context: android.content.Context,
+    download: DownloadEntity
+): Intent {
+    return Intent(context, PlayerActivity::class.java).apply {
+        putExtra("vodId", download.vodId)
+        putExtra("vodName", download.vodName)
+        putExtra("episode", download.episode)
+        putExtra("episodeName", download.episodeName)
+        putExtra("coverUrl", download.coverUrl)
+        putExtra("videoUrl", download.videoUrl)
+        putExtra("localPlaylistPath", download.localPath)
+        putExtra("startPositionMs", 0L)
+        putExtra("isPartialDownload", download.status != DownloadStatus.COMPLETED)
+        putExtra("downloadedDurationMs", download.downloadedDurationMs)
+        putExtra("totalDurationMs", download.totalDurationMs)
     }
 }
 
