@@ -279,9 +279,9 @@ private fun DownloadGroupCard(
 
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -297,7 +297,7 @@ private fun DownloadGroupCard(
 
                 DownloadCover(coverModel = coverModel)
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
                 Column(
                     modifier = Modifier
@@ -319,7 +319,7 @@ private fun DownloadGroupCard(
                     )
 
                     if (group.aggregateProgress > 0f || group.downloadingCount > 0) {
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(6.dp))
                         LinearProgressIndicator(
                             progress = (group.aggregateProgress / 100f).coerceIn(0f, 1f),
                             modifier = Modifier.fillMaxWidth()
@@ -361,9 +361,9 @@ private fun DownloadGroupCard(
             }
 
             if (expanded) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Divider()
                 Spacer(modifier = Modifier.height(8.dp))
+                Divider()
+                Spacer(modifier = Modifier.height(6.dp))
 
                 if (selectionMode) {
                     TextButton(
@@ -387,7 +387,7 @@ private fun DownloadGroupCard(
                         onDelete = { onEpisodeDelete(episode) }
                     )
                     if (index != group.episodes.lastIndex) {
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Divider(modifier = Modifier.padding(vertical = 2.dp))
                     }
                 }
             }
@@ -408,87 +408,79 @@ private fun DownloadItem(
     onPause: () -> Unit,
     onDelete: () -> Unit
 ) {
-    Card(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (selectionMode) {
-                Checkbox(
-                    checked = selected,
-                    onCheckedChange = { onToggleSelection() }
+        if (selectionMode) {
+            Checkbox(
+                checked = selected,
+                onCheckedChange = { onToggleSelection() }
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+        }
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = download.episodeName.ifBlank { download.vodName },
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "状态: ${getStatusText(download.status)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (download.totalSegments > 0 || download.progress > 0f) {
+                Spacer(modifier = Modifier.height(4.dp))
+                LinearProgressIndicator(
+                    progress = (download.progress / 100f).coerceIn(0f, 1f),
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-            }
-
-            DownloadCover(download = download)
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = download.episodeName.ifBlank { download.vodName },
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = "状态: ${getStatusText(download.status)}",
+                    text = buildString {
+                        append("${download.progress.roundToInt()}%")
+                        if (download.totalSegments > 0) {
+                            append(" · ${download.downloadedSegments}/${download.totalSegments} 片段")
+                        }
+                        if (download.status == DownloadStatus.DOWNLOADING) {
+                            append(" · ${DownloadNotificationHelper.formatSpeed(download.speedBytesPerSec)}")
+                        }
+                    },
                     style = MaterialTheme.typography.bodySmall
                 )
+            }
+        }
 
-                if (download.totalSegments > 0 || download.progress > 0f) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LinearProgressIndicator(
-                        progress = (download.progress / 100f).coerceIn(0f, 1f),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = buildString {
-                            append("${download.progress.roundToInt()}%")
-                            if (download.totalSegments > 0) {
-                                append(" · ${download.downloadedSegments}/${download.totalSegments} 片段")
-                            }
-                            if (download.status == DownloadStatus.DOWNLOADING) {
-                                append(" · ${DownloadNotificationHelper.formatSpeed(download.speedBytesPerSec)}")
-                            }
-                        },
-                        style = MaterialTheme.typography.bodySmall
-                    )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            when (download.status) {
+                DownloadStatus.QUEUED,
+                DownloadStatus.PAUSED,
+                DownloadStatus.FAILED -> {
+                    IconButton(onClick = onStart) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = "开始")
+                    }
                 }
+
+                DownloadStatus.DOWNLOADING -> {
+                    IconButton(onClick = onPause) {
+                        Icon(Icons.Default.Pause, contentDescription = "暂停")
+                    }
+                }
+
+                DownloadStatus.COMPLETED -> Unit
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                when (download.status) {
-                    DownloadStatus.QUEUED,
-                    DownloadStatus.PAUSED,
-                    DownloadStatus.FAILED -> {
-                        IconButton(onClick = onStart) {
-                            Icon(Icons.Default.PlayArrow, contentDescription = "开始")
-                        }
-                    }
-
-                    DownloadStatus.DOWNLOADING -> {
-                        IconButton(onClick = onPause) {
-                            Icon(Icons.Default.Pause, contentDescription = "暂停")
-                        }
-                    }
-
-                    DownloadStatus.COMPLETED -> Unit
-                }
-
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "删除")
-                }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, contentDescription = "删除")
             }
         }
     }
@@ -511,14 +503,14 @@ private fun DownloadCover(coverModel: Any?) {
             model = coverModel,
             contentDescription = null,
             modifier = Modifier
-                .size(width = 72.dp, height = 96.dp)
+                .size(width = 54.dp, height = 72.dp)
                 .clip(MaterialTheme.shapes.medium),
             contentScale = ContentScale.Crop
         )
     } else {
         Box(
             modifier = Modifier
-                .size(width = 72.dp, height = 96.dp)
+                .size(width = 54.dp, height = 72.dp)
                 .clip(MaterialTheme.shapes.medium)
                 .background(Color(0xFFDAE7F2)),
             contentAlignment = Alignment.Center

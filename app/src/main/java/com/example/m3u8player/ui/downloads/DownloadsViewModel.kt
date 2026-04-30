@@ -202,5 +202,5 @@ private fun buildDownloadGroups(downloads: List<DownloadEntity>): List<DownloadG
                 aggregateSpeedBytesPerSec = sortedEpisodes.sumOf { it.speedBytesPerSec }
             )
         }
-        .sortedByDescending { group -> group.episodes.maxOfOrNull { it.updatedAt } ?: 0L }
+        .sortedByDescending { group -> group.episodes.maxOfOrNull { it.createdAt } ?: 0L }
 }

@@ -168,6 +168,10 @@ class VideoRepository @Inject constructor(
         return dao.getEpisodeWatchHistoryByVodId(vodId)
     }
 
+    suspend fun getEpisodeWatchHistoryByVodIdAndEpisode(vodId: Int, episode: Int): EpisodeWatchHistoryEntity? {
+        return dao.getEpisodeWatchHistoryByVodIdAndEpisode(vodId, episode)
+    }
+
     suspend fun saveWatchHistory(history: WatchHistoryEntity) {
         dao.insertWatchHistory(history)
         dao.insertEpisodeWatchHistory(history.toEpisodeWatchHistoryEntity())

@@ -75,6 +75,9 @@ interface VideoDao {
     @Query("SELECT * FROM episode_watch_history WHERE vodId = :vodId ORDER BY episode ASC")
     fun getEpisodeWatchHistoryByVodId(vodId: Int): Flow<List<EpisodeWatchHistoryEntity>>
 
+    @Query("SELECT * FROM episode_watch_history WHERE vodId = :vodId AND episode = :episode LIMIT 1")
+    suspend fun getEpisodeWatchHistoryByVodIdAndEpisode(vodId: Int, episode: Int): EpisodeWatchHistoryEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertEpisodeWatchHistory(history: EpisodeWatchHistoryEntity)
     
@@ -144,7 +147,7 @@ interface VideoDao {
 
     @Query("SELECT * FROM downloads WHERE vodId = :vodId")
     fun getDownloadsByVodId(vodId: Int): Flow<List<DownloadEntity>>
-    
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDownload(download: DownloadEntity): Long
     

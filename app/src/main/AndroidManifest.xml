@@ -49,9 +49,9 @@
             android:exported="false" />
 
         <service
-            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:name=".service.DownloadForegroundService"
             android:foregroundServiceType="dataSync"
-            tools:node="merge" />
+            android:exported="false" />
 
         <receiver
             android:name=".service.DownloadActionReceiver"

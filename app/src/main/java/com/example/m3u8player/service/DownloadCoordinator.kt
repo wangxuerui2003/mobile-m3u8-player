@@ -1,24 +1,15 @@
 package com.example.m3u8player.service
 
 import android.content.Context
-import androidx.work.Data
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkInfo
-import androidx.work.WorkManager
 import com.example.m3u8player.data.ArtworkCache
 import com.example.m3u8player.data.DownloadSettingsStore
 import com.example.m3u8player.data.model.DownloadEntity
 import com.example.m3u8player.data.model.DownloadStatus
 import com.example.m3u8player.data.repository.VideoRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,7 +22,6 @@ sealed class DownloadEnqueueResult {
 class DownloadCoordinator @Inject constructor(
     @ApplicationContext private val context: Context,
     private val repository: VideoRepository,
-    private val workManager: WorkManager,
     private val settingsStore: DownloadSettingsStore,
     private val artworkCache: ArtworkCache
 ) {
@@ -43,9 +33,7 @@ class DownloadCoordinator @Inject constructor(
         scheduleMutex.withLock {
             val downloads = repository.getDownloadsSnapshot()
             downloads.filter { it.status == DownloadStatus.DOWNLOADING }.forEach { download ->
-                if (!isWorkActive(download.workId)) {
-                    repository.markDownloadQueued(download.id, resetWork = true)
-                }
+                repository.markDownloadQueued(download.id, resetWork = true)
             }
         }
         schedulePendingDownloads()
@@ -81,9 +69,12 @@ class DownloadCoordinator @Inject constructor(
 
     suspend fun pauseDownload(id: Long) {
         repository.getDownload(id)?.let { download ->
-            repository.markDownloadPaused(id)
-            cancelWork(download.workId)
-            DownloadNotificationHelper.cancel(context, id)
+            if (download.status in setOf(DownloadStatus.DOWNLOADING, DownloadStatus.QUEUED)) {
+                DownloadForegroundService.pause(context, id)
+            } else {
+                repository.markDownloadPaused(id)
+                DownloadNotificationHelper.cancel(context, id)
+            }
             schedulePendingDownloads()
         }
     }
@@ -94,10 +85,8 @@ class DownloadCoordinator @Inject constructor(
     }
 
     suspend fun deleteDownload(id: Long) {
-        repository.getDownload(id)?.let { download ->
-            cancelWork(download.workId)
-            DownloadNotificationHelper.cancel(context, id)
-            repository.deleteDownload(id)
+        repository.getDownload(id)?.let {
+            DownloadForegroundService.delete(context, id)
             schedulePendingDownloads()
         }
     }
@@ -116,9 +105,7 @@ class DownloadCoordinator @Inject constructor(
         if (ids.isEmpty()) return
         repository.getDownloadsByIds(ids.toList()).forEach { download ->
             if (download.status in setOf(DownloadStatus.DOWNLOADING, DownloadStatus.QUEUED)) {
-                repository.markDownloadPaused(download.id)
-                cancelWork(download.workId)
-                DownloadNotificationHelper.cancel(context, download.id)
+                DownloadForegroundService.pause(context, download.id)
             }
         }
         schedulePendingDownloads()
@@ -127,9 +114,7 @@ class DownloadCoordinator @Inject constructor(
     suspend fun deleteDownloads(ids: Set<Long>) {
         if (ids.isEmpty()) return
         repository.getDownloadsByIds(ids.toList()).forEach { download ->
-            cancelWork(download.workId)
-            DownloadNotificationHelper.cancel(context, download.id)
-            repository.deleteDownload(download.id)
+            DownloadForegroundService.delete(context, download.id)
         }
         schedulePendingDownloads()
     }
@@ -141,66 +126,11 @@ class DownloadCoordinator @Inject constructor(
 
     suspend fun schedulePendingDownloads() {
         scheduleMutex.withLock {
-            val concurrency = settingsStore.concurrency.first()
-            val activeDownloads = repository.getDownloadsByStatuses(listOf(DownloadStatus.DOWNLOADING))
-            var activeCount = 0
-
-            for (download in activeDownloads) {
-                if (isWorkActive(download.workId)) {
-                    activeCount++
-                } else {
-                    repository.markDownloadQueued(download.id, resetWork = true)
-                }
+            val queued = repository.getDownloadsByStatuses(listOf(DownloadStatus.QUEUED))
+            val active = repository.getDownloadsByStatuses(listOf(DownloadStatus.DOWNLOADING))
+            if (queued.isNotEmpty() || active.isNotEmpty()) {
+                DownloadForegroundService.start(context)
             }
-
-            val remainingSlots = (concurrency - activeCount).coerceAtLeast(0)
-            if (remainingSlots == 0) return
-
-            repository.getDownloadsByStatuses(listOf(DownloadStatus.QUEUED))
-                .take(remainingSlots)
-                .forEach { startDownloadWork(it) }
         }
-    }
-
-    private suspend fun startDownloadWork(download: DownloadEntity) {
-        val workRequest = OneTimeWorkRequestBuilder<DownloadWorker>()
-            .addTag(DOWNLOAD_TAG)
-            .addTag(downloadTag(download.id))
-            .setInputData(
-                Data.Builder()
-                    .putLong(DownloadWorker.KEY_DOWNLOAD_ID, download.id)
-                    .build()
-            )
-            .build()
-
-        repository.markDownloadEnqueued(download.id, workRequest.id.toString())
-        workManager.enqueueUniqueWork(uniqueWorkName(download.id), ExistingWorkPolicy.REPLACE, workRequest)
-    }
-
-    private suspend fun isWorkActive(workId: String?): Boolean = withContext(Dispatchers.IO) {
-        if (workId.isNullOrBlank()) return@withContext false
-
-        val info = try {
-            workManager.getWorkInfoById(UUID.fromString(workId)).get()
-        } catch (_: Exception) {
-            null
-        }
-
-        info?.state in setOf(WorkInfo.State.RUNNING, WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED)
-    }
-
-    private fun cancelWork(workId: String?) {
-        if (workId.isNullOrBlank()) return
-        try {
-            workManager.cancelWorkById(UUID.fromString(workId))
-        } catch (_: IllegalArgumentException) {
-        }
-    }
-
-    companion object {
-        const val DOWNLOAD_TAG = "video_download"
-
-        fun uniqueWorkName(downloadId: Long): String = "download_work_$downloadId"
-        fun downloadTag(downloadId: Long): String = "download_id_$downloadId"
     }
 }

@@ -8,13 +8,13 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
-import androidx.work.ForegroundInfo
 import com.example.m3u8player.MainActivity
 import com.example.m3u8player.data.model.DownloadEntity
 import kotlin.math.roundToInt
 
 object DownloadNotificationHelper {
     const val CHANNEL_ID = "download_progress_channel"
+    const val SUMMARY_NOTIFICATION_ID = 19_999
     private const val CHANNEL_NAME = "视频下载"
     private const val CHANNEL_DESCRIPTION = "显示视频下载进度"
 
@@ -34,15 +34,6 @@ object DownloadNotificationHelper {
             setShowBadge(false)
         }
         manager.createNotificationChannel(channel)
-    }
-
-    fun buildForegroundInfo(context: Context, download: DownloadEntity): ForegroundInfo {
-        val notification = buildProgressNotification(context, download)
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ForegroundInfo(notificationId(download.id), notification, android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            ForegroundInfo(notificationId(download.id), notification)
-        }
     }
 
     fun buildProgressNotification(context: Context, download: DownloadEntity): Notification {
@@ -104,6 +95,35 @@ object DownloadNotificationHelper {
             .build()
     }
 
+    fun buildSummaryNotification(context: Context, activeCount: Int, queuedCount: Int): Notification {
+        ensureChannel(context)
+
+        val openIntent = PendingIntent.getActivity(
+            context,
+            0,
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val contentText = when {
+            activeCount > 0 && queuedCount > 0 -> "正在下载 $activeCount 个，等待 $queuedCount 个"
+            activeCount > 0 -> "正在下载 $activeCount 个"
+            queuedCount > 0 -> "等待下载 $queuedCount 个"
+            else -> "下载服务正在准备"
+        }
+
+        return NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle("视频下载")
+            .setContentText(contentText)
+            .setContentIntent(openIntent)
+            .setOnlyAlertOnce(true)
+            .setOngoing(true)
+            .setSilent(true)
+            .setProgress(0, 0, activeCount == 0 && queuedCount > 0)
+            .build()
+    }
+
     fun cancel(context: Context, downloadId: Long) {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.cancel(notificationId(downloadId))
@@ -112,6 +132,11 @@ object DownloadNotificationHelper {
     fun notifyProgress(context: Context, download: DownloadEntity) {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.notify(notificationId(download.id), buildProgressNotification(context, download))
+    }
+
+    fun notifySummary(context: Context, activeCount: Int, queuedCount: Int) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        manager.notify(SUMMARY_NOTIFICATION_ID, buildSummaryNotification(context, activeCount, queuedCount))
     }
 
     fun notificationId(downloadId: Long): Int {

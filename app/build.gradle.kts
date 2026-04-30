@@ -115,9 +115,6 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.2.0")
     implementation("androidx.media3:media3-session:1.2.0")
 
-    // WorkManager
-    implementation("androidx.work:work-runtime-ktx:2.9.0")
-
     // Hilt
     implementation("com.google.dagger:hilt-android:2.48")
     ksp("com.google.dagger:hilt-android-compiler:2.48")

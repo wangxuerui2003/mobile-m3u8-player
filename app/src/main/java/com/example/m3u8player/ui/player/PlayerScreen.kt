@@ -23,6 +23,8 @@ import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,14 +57,18 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.example.m3u8player.M3U8PlayerApplication
+import com.example.m3u8player.data.model.DownloadStatus
 import com.example.m3u8player.data.model.WatchHistoryEntity
+import com.example.m3u8player.ui.detail.Episode
+import com.example.m3u8player.ui.detail.parseEpisodes
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import android.net.Uri
+import java.io.File
 import kotlin.math.abs
 
 private val playbackSpeeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
@@ -86,13 +92,19 @@ fun PlayerScreen(
     val repository = app.videoRepository
     val artworkCache = app.artworkCache
     val playerSettingsStore = app.playerSettingsStore
-    val hasPlayableSource = playbackSource != null
     val coroutineScope = rememberCoroutineScope()
-    val remoteUri = playbackSource?.remoteUrl?.takeIf { it.isNotBlank() }
-    val partialDownloadBoundaryMs = playbackSource?.downloadedDurationMs?.coerceAtLeast(0L) ?: 0L
-    val totalDurationHintMs = playbackSource?.totalDurationMs?.coerceAtLeast(0L) ?: 0L
+    var currentEpisode by remember { mutableStateOf(episode) }
+    var currentEpisodeName by remember { mutableStateOf(episodeName) }
+    var currentCoverUrl by remember { mutableStateOf(coverUrl) }
+    var activePlaybackSource by remember { mutableStateOf(playbackSource) }
+    var sourceStartPositionMs by remember { mutableLongStateOf(startPositionMs) }
+    var episodeCatalog by remember { mutableStateOf<List<Episode>>(emptyList()) }
+    val hasPlayableSource = activePlaybackSource != null
+    val remoteUri = activePlaybackSource?.remoteUrl?.takeIf { it.isNotBlank() }
+    val partialDownloadBoundaryMs = activePlaybackSource?.downloadedDurationMs?.coerceAtLeast(0L) ?: 0L
+    val totalDurationHintMs = activePlaybackSource?.totalDurationMs?.coerceAtLeast(0L) ?: 0L
 
-    val exoPlayer = remember(playbackSource?.uri, playbackSource?.remoteUrl, playbackSource?.localPlaylistPath) {
+    val exoPlayer = remember {
         ExoPlayer.Builder(context).build()
     }
 
@@ -110,20 +122,20 @@ fun PlayerScreen(
     var dragAccumulatedY by remember { mutableFloatStateOf(0f) }
     var isSeekGestureActive by remember { mutableStateOf(false) }
     var ignoreCurrentDragGesture by remember { mutableStateOf(false) }
-    var activeSourceUri by remember(playbackSource?.uri, playbackSource?.remoteUrl, playbackSource?.localPlaylistPath) {
+    var activeSourceUri by remember(activePlaybackSource?.uri, activePlaybackSource?.remoteUrl, activePlaybackSource?.localPlaylistPath) {
         mutableStateOf<String?>(null)
     }
-    var isUsingRemoteSource by remember(playbackSource?.uri, playbackSource?.remoteUrl, playbackSource?.localPlaylistPath) {
+    var isUsingRemoteSource by remember(activePlaybackSource?.uri, activePlaybackSource?.remoteUrl, activePlaybackSource?.localPlaylistPath) {
         mutableStateOf(false)
     }
 
     fun resolveSourceForPosition(positionMs: Long): Pair<String?, Boolean> {
-        if (playbackSource == null) return null to false
+        val source = activePlaybackSource ?: return null to false
         val safePositionMs = positionMs.coerceAtLeast(0L)
-        val localUri = playbackSource.uri.takeIf { it.isNotBlank() }
+        val localUri = source.uri.takeIf { it.isNotBlank() }
         val shouldUseRemote = when {
             remoteUri.isNullOrBlank() -> false
-            !playbackSource.isPartialDownload -> !playbackSource.isLocal
+            !source.isPartialDownload -> !source.isLocal
             partialDownloadBoundaryMs <= 0L -> true
             safePositionMs > partialDownloadBoundaryMs -> true
             else -> false
@@ -147,6 +159,27 @@ fun PlayerScreen(
         currentPosition = seekMs.coerceAtLeast(0L)
     }
 
+    suspend fun saveCurrentWatchHistory() {
+        if (vodId <= 0 || vodName.isBlank()) return
+        val coverPath = artworkCache.cacheArtwork("vod_$vodId", currentCoverUrl)
+        repository.saveWatchHistory(
+            WatchHistoryEntity(
+                vodId = vodId,
+                vodName = vodName,
+                episode = currentEpisode,
+                episodeName = currentEpisodeName.ifBlank { "第${currentEpisode + 1}集" },
+                coverUrl = currentCoverUrl,
+                coverPath = coverPath,
+                progressMs = exoPlayer.currentPosition.coerceAtLeast(0L),
+                durationMs = listOf(
+                    totalDurationHintMs,
+                    duration,
+                    exoPlayer.duration.coerceAtLeast(0L)
+                ).maxOrNull() ?: 0L
+            )
+        )
+    }
+
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
@@ -155,27 +188,7 @@ fun PlayerScreen(
         }
         exoPlayer.addListener(listener)
         onDispose {
-            if (vodId > 0 && vodName.isNotBlank()) {
-                runBlocking {
-                    val coverPath = artworkCache.cacheArtwork("vod_$vodId", coverUrl)
-                    repository.saveWatchHistory(
-                        WatchHistoryEntity(
-                            vodId = vodId,
-                            vodName = vodName,
-                            episode = episode,
-                            episodeName = episodeName.ifBlank { "第${episode + 1}集" },
-                            coverUrl = coverUrl,
-                            coverPath = coverPath,
-                            progressMs = exoPlayer.currentPosition.coerceAtLeast(0L),
-                            durationMs = listOf(
-                                totalDurationHintMs,
-                                duration,
-                                exoPlayer.duration.coerceAtLeast(0L)
-                            ).maxOrNull() ?: 0L
-                        )
-                    )
-                }
-            }
+            runBlocking { saveCurrentWatchHistory() }
             exoPlayer.removeListener(listener)
             exoPlayer.release()
         }
@@ -186,13 +199,20 @@ fun PlayerScreen(
         exoPlayer.playbackParameters = PlaybackParameters(speed)
     }
 
-    LaunchedEffect(playbackSource, startPositionMs) {
-        val (initialUri, useRemote) = resolveSourceForPosition(startPositionMs)
+    LaunchedEffect(vodId) {
+        episodeCatalog = repository.getVideoDetail(vodId)
+            ?.let { parseEpisodes(it.vodPlayUrl) }
+            .orEmpty()
+    }
+
+    LaunchedEffect(activePlaybackSource, sourceStartPositionMs) {
+        val (initialUri, useRemote) = resolveSourceForPosition(sourceStartPositionMs)
         if (initialUri != null) {
             switchToSource(
                 sourceUri = initialUri,
                 useRemote = useRemote,
-                seekMs = startPositionMs
+                seekMs = sourceStartPositionMs,
+                playWhenReady = true
             )
         } else {
             activeSourceUri = null
@@ -210,7 +230,7 @@ fun PlayerScreen(
                 val playerDuration = exoPlayer.duration.coerceAtLeast(0L)
                 duration = maxOf(playerDuration, totalDurationHintMs)
 
-                val shouldSwitchToRemote = playbackSource?.isPartialDownload == true &&
+                val shouldSwitchToRemote = activePlaybackSource?.isPartialDownload == true &&
                     !isUsingRemoteSource &&
                     !remoteUri.isNullOrBlank() &&
                     partialDownloadBoundaryMs > 0L &&
@@ -270,6 +290,52 @@ fun PlayerScreen(
     fun seekBy(deltaMs: Long) {
         seekTo(exoPlayer.currentPosition + deltaMs, exoPlayer.currentPosition)
     }
+
+    fun switchEpisodeBy(delta: Int) {
+        val currentIndex = episodeCatalog.indexOfFirst { it.index == currentEpisode }
+        val target = episodeCatalog.getOrNull(currentIndex + delta) ?: return
+        coroutineScope.launch {
+            val download = repository.findDownloadByVodIdAndEpisode(vodId, target.index)
+            val history = repository.getEpisodeWatchHistoryByVodIdAndEpisode(vodId, target.index)
+            val nextSource = when {
+                !download?.localPath.isNullOrBlank() -> PlaybackSource(
+                    uri = Uri.fromFile(File(download?.localPath.orEmpty())).toString(),
+                    isLocal = true,
+                    remoteUrl = download?.videoUrl?.takeIf { it.isNotBlank() } ?: target.url,
+                    localPlaylistPath = download?.localPath,
+                    isPartialDownload = download?.status != DownloadStatus.COMPLETED,
+                    downloadedDurationMs = download?.downloadedDurationMs ?: 0L,
+                    totalDurationMs = maxOf(download?.totalDurationMs ?: 0L, history?.durationMs ?: 0L)
+                )
+
+                target.url.isNotBlank() -> PlaybackSource(
+                    uri = target.url,
+                    isLocal = false,
+                    remoteUrl = target.url,
+                    totalDurationMs = history?.durationMs ?: 0L
+                )
+
+                else -> null
+            }
+
+            if (nextSource == null) {
+                overlayText = "该剧集没有可播放的地址"
+                return@launch
+            }
+
+            saveCurrentWatchHistory()
+            currentEpisode = target.index
+            currentEpisodeName = target.name.ifBlank { "第${target.index + 1}集" }
+            currentCoverUrl = download?.coverUrl ?: currentCoverUrl
+            activePlaybackSource = nextSource
+            sourceStartPositionMs = history?.progressMs ?: 0L
+            showControls = true
+        }
+    }
+
+    val currentEpisodeIndex = episodeCatalog.indexOfFirst { it.index == currentEpisode }
+    val canGoPreviousEpisode = currentEpisodeIndex > 0
+    val canGoNextEpisode = currentEpisodeIndex >= 0 && currentEpisodeIndex < episodeCatalog.lastIndex
 
     Box(
         modifier = Modifier
@@ -357,8 +423,6 @@ fun PlayerScreen(
                     PlayerView(ctx).apply {
                         player = exoPlayer
                         useController = false
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                        setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
                     }
                 },
                 modifier = Modifier.fillMaxSize()
@@ -382,19 +446,23 @@ fun PlayerScreen(
         if (showControls) {
             PlayerControls(
                 title = vodName.ifBlank { "视频播放" },
-                episodeLabel = episodeName.ifBlank { "第${episode + 1}集" },
+                episodeLabel = currentEpisodeName.ifBlank { "第${currentEpisode + 1}集" },
                 isPlayable = hasPlayableSource,
                 isPlaying = isPlaying,
                 currentPosition = displayPosition,
                 duration = duration,
                 selectedSpeed = speed,
-                isPartialDownload = playbackSource?.isPartialDownload == true,
+                isPartialDownload = activePlaybackSource?.isPartialDownload == true,
+                canGoPreviousEpisode = canGoPreviousEpisode,
+                canGoNextEpisode = canGoNextEpisode,
                 onBack = onBack,
                 onShowSpeed = { showSpeedSheet = true },
                 onPlayPause = { if (hasPlayableSource) exoPlayer.playWhenReady = !exoPlayer.playWhenReady },
                 onSeek = { position -> if (hasPlayableSource) seekTo(position) },
                 onSeekBack = { seekBy(-5000L) },
-                onSeekForward = { seekBy(5000L) }
+                onSeekForward = { seekBy(5000L) },
+                onPreviousEpisode = { switchEpisodeBy(-1) },
+                onNextEpisode = { switchEpisodeBy(1) }
             )
         }
     }
@@ -441,12 +509,16 @@ private fun PlayerControls(
     duration: Long,
     selectedSpeed: Float,
     isPartialDownload: Boolean,
+    canGoPreviousEpisode: Boolean,
+    canGoNextEpisode: Boolean,
     onBack: () -> Unit,
     onShowSpeed: () -> Unit,
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onSeekBack: () -> Unit,
-    onSeekForward: () -> Unit
+    onSeekForward: () -> Unit,
+    onPreviousEpisode: () -> Unit,
+    onNextEpisode: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -505,10 +577,14 @@ private fun PlayerControls(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                IconButton(onClick = onPreviousEpisode, enabled = isPlayable && canGoPreviousEpisode) {
+                    Icon(Icons.Default.SkipPrevious, contentDescription = "上一集", tint = Color.White)
+                }
+                Spacer(modifier = Modifier.width(10.dp))
                 IconButton(onClick = onSeekBack, enabled = isPlayable) {
                     Icon(Icons.Default.FastRewind, contentDescription = "Rewind", tint = Color.White)
                 }
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(10.dp))
                 IconButton(onClick = onPlayPause, enabled = isPlayable) {
                     Icon(
                         if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -516,9 +592,13 @@ private fun PlayerControls(
                         tint = Color.White
                     )
                 }
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.width(10.dp))
                 IconButton(onClick = onSeekForward, enabled = isPlayable) {
                     Icon(Icons.Default.FastForward, contentDescription = "Forward", tint = Color.White)
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                IconButton(onClick = onNextEpisode, enabled = isPlayable && canGoNextEpisode) {
+                    Icon(Icons.Default.SkipNext, contentDescription = "下一集", tint = Color.White)
                 }
             }
         }
