@@ -30,6 +30,8 @@ android {
             useSupportLibrary = true
         }
 
+        buildConfigField("String", "TMDB_API_KEY", "\"ea39f55082363b2e3e787430a6031d9b\"")
+
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
         }
@@ -57,6 +59,7 @@ android {
     
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     
     composeOptions {

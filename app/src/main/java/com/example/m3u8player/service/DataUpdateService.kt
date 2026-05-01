@@ -71,9 +71,10 @@ class DataUpdateService : Service() {
 
         updateJob = serviceScope.launch {
             try {
-                val result = repository.fetchAllVideoList(
+                val result = repository.fetchIncrementalVideoList(
                     onProgress = { current, total ->
-                        val progress = current.toFloat() / total * 100
+                        val safeTotal = total.coerceAtLeast(1)
+                        val progress = current.toFloat() / safeTotal * 100
                         Log.d(TAG, "Progress: $current/$total = $progress%")
                         app.setUpdateState(isUpdating = true, progress = progress)
                         updateNotification(progress.toInt())
@@ -147,7 +148,7 @@ class DataUpdateService : Service() {
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("正在更新数据")
+            .setContentTitle("正在增量更新数据")
             .setContentText(if (progress > 0) "进度: $progress%" else "准备中...")
             .setSmallIcon(android.R.drawable.ic_menu_rotate)
             .setContentIntent(pendingIntent)

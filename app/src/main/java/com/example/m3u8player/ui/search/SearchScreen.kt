@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -41,12 +42,17 @@ import com.example.m3u8player.data.model.VideoListEntity
 @Composable
 fun SearchScreen(
     onVideoClick: (Int) -> Unit,
+    initialQuery: String? = null,
     viewModel: SearchViewModel = hiltViewModel()
 ) {
     val searchQuery by viewModel.searchQuery.collectAsState()
     val searchResults by viewModel.searchResults.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
     val searchHistory by viewModel.searchHistory.collectAsState()
+
+    LaunchedEffect(initialQuery) {
+        viewModel.searchInitialQuery(initialQuery)
+    }
 
     Scaffold(
         topBar = {

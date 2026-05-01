@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.File
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -38,6 +39,21 @@ class VideoRepository @Inject constructor(
 
     fun searchVideos(query: String): Flow<List<VideoListEntity>> {
         return dao.searchVideos(query)
+    }
+
+    suspend fun searchVideosSnapshot(query: String, limit: Int = 20): List<VideoListEntity> {
+        val normalized = query.trim()
+        if (normalized.isBlank()) return emptyList()
+        return dao.searchVideosSnapshot(normalized, limit)
+    }
+
+    suspend fun getLatestVideos(limit: Int = 20): List<VideoListEntity> {
+        return dao.getLatestVideosSnapshot(limit)
+    }
+
+    suspend fun getLatestVideosByTypeIds(typeIds: List<Int>, limit: Int = 20): List<VideoListEntity> {
+        if (typeIds.isEmpty()) return emptyList()
+        return dao.getLatestVideosByTypeIds(typeIds, limit)
     }
 
     fun getSearchHistory(limit: Int = 20): Flow<List<SearchHistoryEntity>> {
@@ -118,6 +134,78 @@ class VideoRepository @Inject constructor(
             dao.setMetadata(MetadataEntity("last_update", System.currentTimeMillis().toString()))
             dao.setMetadata(MetadataEntity("total_items", totalInDb.toString()))
 
+            Result.success(totalInDb)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun fetchIncrementalVideoList(
+        onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }
+    ): Result<Int> {
+        val lastUpdate = getLastUpdateTime()?.toLongOrNull()
+        val currentCount = dao.getVideoCount()
+        val now = System.currentTimeMillis()
+        val maxIncrementalAgeMs = TimeUnit.DAYS.toMillis(7)
+
+        if (lastUpdate == null || currentCount == 0 || now - lastUpdate > maxIncrementalAgeMs) {
+            return fetchAllVideoList(onProgress)
+        }
+
+        val hoursSinceUpdate = TimeUnit.MILLISECONDS.toHours(now - lastUpdate).toInt()
+        val windowHours = (hoursSinceUpdate + 2).coerceIn(24, 168)
+
+        val incremental = fetchRecentVideoList(hours = windowHours, onProgress = onProgress)
+        return if (incremental.isSuccess) {
+            incremental
+        } else {
+            fetchAllVideoList(onProgress)
+        }
+    }
+
+    suspend fun fetchTodayUpdates(limit: Int = 20): Result<List<VideoListEntity>> {
+        return try {
+            val response = retry { api.getVideoList(page = 1, hours = 24) }
+            if (response.categories.isNotEmpty()) {
+                dao.insertCategories(response.categories.map { it.toEntity() })
+            }
+            insertNewVideos(response.list)
+            Result.success(
+                response.list
+                    .take(limit)
+                    .map { it.toEntity() }
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun fetchRecentVideoList(
+        hours: Int,
+        onProgress: (current: Int, total: Int) -> Unit
+    ): Result<Int> {
+        return try {
+            val firstPage = retry { api.getVideoList(page = 1, hours = hours) }
+            val totalPages = firstPage.pageCount.coerceAtLeast(1)
+
+            if (firstPage.categories.isNotEmpty()) {
+                dao.insertCategories(firstPage.categories.map { it.toEntity() })
+            }
+
+            var newCount = insertNewVideos(firstPage.list)
+            onProgress(1, totalPages)
+
+            for (page in 2..totalPages) {
+                delay(500)
+                val pageData = retry { api.getVideoList(page = page, hours = hours) }
+                newCount += insertNewVideos(pageData.list)
+                onProgress(page, totalPages)
+            }
+
+            val totalInDb = dao.getVideoCount()
+            dao.setMetadata(MetadataEntity("last_update", System.currentTimeMillis().toString()))
+            dao.setMetadata(MetadataEntity("total_items", totalInDb.toString()))
+            dao.setMetadata(MetadataEntity("last_incremental_new_count", newCount.toString()))
             Result.success(totalInDb)
         } catch (e: Exception) {
             Result.failure(e)

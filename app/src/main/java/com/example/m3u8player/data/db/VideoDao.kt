@@ -16,6 +16,9 @@ interface VideoDao {
     @Query("SELECT * FROM video_list WHERE vodName LIKE '%' || :query || '%'")
     fun searchVideos(query: String): Flow<List<VideoListEntity>>
 
+    @Query("SELECT * FROM video_list WHERE vodName LIKE '%' || :query || '%' ORDER BY vodTime DESC LIMIT :limit")
+    suspend fun searchVideosSnapshot(query: String, limit: Int = 20): List<VideoListEntity>
+
     @Query("SELECT * FROM search_history ORDER BY searchedAt DESC LIMIT :limit")
     fun getSearchHistory(limit: Int = 20): Flow<List<SearchHistoryEntity>>
 
@@ -30,6 +33,12 @@ interface VideoDao {
     
     @Query("SELECT * FROM video_list WHERE typeId = :typeId ORDER BY vodTime DESC LIMIT :limit OFFSET :offset")
     fun getVideosByType(typeId: Int, limit: Int = 20, offset: Int = 0): Flow<List<VideoListEntity>>
+
+    @Query("SELECT * FROM video_list WHERE typeId IN (:typeIds) ORDER BY vodTime DESC LIMIT :limit")
+    suspend fun getLatestVideosByTypeIds(typeIds: List<Int>, limit: Int = 20): List<VideoListEntity>
+
+    @Query("SELECT * FROM video_list ORDER BY vodTime DESC LIMIT :limit")
+    suspend fun getLatestVideosSnapshot(limit: Int = 20): List<VideoListEntity>
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertVideos(videos: List<VideoListEntity>)

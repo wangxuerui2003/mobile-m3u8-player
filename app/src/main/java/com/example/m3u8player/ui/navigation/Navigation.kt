@@ -8,9 +8,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.navArgument
 import com.example.m3u8player.ui.home.HomeScreen
 import com.example.m3u8player.ui.search.SearchScreen
 import com.example.m3u8player.ui.watchlater.WatchLaterScreen
@@ -18,6 +20,7 @@ import com.example.m3u8player.ui.downloads.DownloadsScreen
 import com.example.m3u8player.ui.profile.ProfileScreen
 import com.example.m3u8player.ui.detail.DetailScreen
 import android.content.Intent
+import android.net.Uri
 import com.example.m3u8player.ui.player.PlayerActivity
 
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
@@ -27,6 +30,8 @@ sealed class Screen(val route: String, val title: String, val icon: androidx.com
     object Downloads : Screen("downloads", "下载", Icons.Default.Download)
     object Profile : Screen("profile", "我的", Icons.Default.Person)
 }
+
+private const val SEARCH_ROUTE_WITH_QUERY = "search?query={query}"
 
 @Composable
 fun AppNavigation(
@@ -43,6 +48,7 @@ fun AppNavigation(
     
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val currentTopRoute = currentDestination?.route?.substringBefore("?")
     
     Scaffold(
         modifier = modifier,
@@ -52,7 +58,7 @@ fun AppNavigation(
                     NavigationBarItem(
                         icon = { Icon(screen.icon, contentDescription = screen.title) },
                         label = { Text(screen.title) },
-                        selected = currentDestination?.route == screen.route,
+                        selected = currentTopRoute == screen.route,
                         onClick = {
                             navController.navigate(screen.route) {
                                 popUpTo(navController.graph.startDestinationId)
@@ -70,29 +76,36 @@ fun AppNavigation(
             modifier = Modifier.padding(paddingValues)
         ) {
             composable(Screen.Home.route) {
-                val context = androidx.compose.ui.platform.LocalContext.current
                 HomeScreen(
-                    onPlayRequest = { request ->
-                        val intent = Intent(context, PlayerActivity::class.java).apply {
-                            putExtra("vodId", request.vodId)
-                            putExtra("vodName", request.vodName)
-                            putExtra("episode", request.episode)
-                            putExtra("episodeName", request.episodeName)
-                            putExtra("coverUrl", request.coverUrl)
-                            putExtra("startPositionMs", request.startPositionMs)
-                            putExtra("videoUrl", request.videoUrl)
-                            putExtra("localPlaylistPath", request.localPlaylistPath)
-                            putExtra("isPartialDownload", request.isPartialDownload)
-                            putExtra("downloadedDurationMs", request.downloadedDurationMs)
-                            putExtra("totalDurationMs", request.totalDurationMs)
-                        }
-                        context.startActivity(intent)
+                    onVideoClick = { vodId ->
+                        navController.navigate("detail/$vodId")
+                    },
+                    onSearchRequest = { query ->
+                        navController.navigate("search?query=${Uri.encode(query)}")
                     }
                 )
             }
             
             composable(Screen.Search.route) {
                 SearchScreen(
+                    onVideoClick = { vodId ->
+                        navController.navigate("detail/$vodId")
+                    }
+                )
+            }
+
+            composable(
+                route = SEARCH_ROUTE_WITH_QUERY,
+                arguments = listOf(
+                    navArgument("query") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) { backStackEntry ->
+                SearchScreen(
+                    initialQuery = backStackEntry.arguments?.getString("query"),
                     onVideoClick = { vodId ->
                         navController.navigate("detail/$vodId")
                     }
@@ -116,7 +129,25 @@ fun AppNavigation(
             }
             
             composable(Screen.Profile.route) {
-                ProfileScreen()
+                val context = androidx.compose.ui.platform.LocalContext.current
+                ProfileScreen(
+                    onPlayRequest = { request ->
+                        val intent = Intent(context, PlayerActivity::class.java).apply {
+                            putExtra("vodId", request.vodId)
+                            putExtra("vodName", request.vodName)
+                            putExtra("episode", request.episode)
+                            putExtra("episodeName", request.episodeName)
+                            putExtra("coverUrl", request.coverUrl)
+                            putExtra("startPositionMs", request.startPositionMs)
+                            putExtra("videoUrl", request.videoUrl)
+                            putExtra("localPlaylistPath", request.localPlaylistPath)
+                            putExtra("isPartialDownload", request.isPartialDownload)
+                            putExtra("downloadedDurationMs", request.downloadedDurationMs)
+                            putExtra("totalDurationMs", request.totalDurationMs)
+                        }
+                        context.startActivity(intent)
+                    }
+                )
             }
             
             composable("detail/{vodId}") { backStackEntry ->

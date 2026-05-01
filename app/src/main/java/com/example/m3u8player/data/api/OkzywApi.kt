@@ -10,7 +10,9 @@ interface OkzywApi {
     @GET("api.php/provide/vod/")
     suspend fun getVideoList(
         @Query("ac") action: String = "list",
-        @Query("pg") page: Int = 1
+        @Query("pg") page: Int = 1,
+        @Query("t") typeId: Int? = null,
+        @Query("h") hours: Int? = null
     ): VideoListResponse
     
     @GET("api.php/provide/vod/")

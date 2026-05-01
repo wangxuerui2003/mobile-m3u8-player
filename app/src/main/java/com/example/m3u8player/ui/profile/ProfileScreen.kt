@@ -19,6 +19,7 @@ import com.example.m3u8player.M3U8PlayerApplication
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(
+    onPlayRequest: (com.example.m3u8player.ui.recent.RecentPlaybackRequest) -> Unit,
     viewModel: ProfileViewModel = hiltViewModel()
 ) {
     val videoCount by viewModel.videoCount.collectAsState()
@@ -30,6 +31,13 @@ fun ProfileScreen(
     val globalUpdateState by app.updateState.collectAsState()
     val isUpdating = globalUpdateState.isUpdating
     val updateProgress = globalUpdateState.progress
+    val recentWatchViewModel: com.example.m3u8player.ui.recent.RecentWatchViewModel = hiltViewModel()
+    val watchHistory by recentWatchViewModel.watchHistory.collectAsState()
+    val expandedVodIds by recentWatchViewModel.expandedVodIds.collectAsState()
+
+    LaunchedEffect(Unit) {
+        recentWatchViewModel.playbackRequests.collect(onPlayRequest)
+    }
     
     Scaffold(
         topBar = {
@@ -63,6 +71,14 @@ fun ProfileScreen(
                     StatItem("下载数量", downloadCount.toString())
                 }
             }
+
+            com.example.m3u8player.ui.recent.RecentWatchSection(
+                watchHistory = watchHistory,
+                expandedVodIds = expandedVodIds,
+                onPlay = recentWatchViewModel::playRecentWatch,
+                onToggleExpanded = recentWatchViewModel::toggleExpanded,
+                onPlayEpisode = recentWatchViewModel::playRecentEpisode
+            )
             
             // Data Update
             Card(

@@ -1,10 +1,12 @@
 package com.example.m3u8player.di
 
 import com.example.m3u8player.data.api.OkzywApi
+import com.example.m3u8player.data.api.TmdbApi
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import javax.inject.Qualifier
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -16,7 +18,16 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
     
-    private const val BASE_URL = "https://api.okzyw.net/"
+    private const val OKZYW_BASE_URL = "https://api.okzyw.net/"
+    private const val TMDB_BASE_URL = "https://api.themoviedb.org/3/"
+
+    @Qualifier
+    @Retention(AnnotationRetention.BINARY)
+    annotation class OkzywRetrofit
+
+    @Qualifier
+    @Retention(AnnotationRetention.BINARY)
+    annotation class TmdbRetrofit
     
     @Provides
     @Singleton
@@ -33,9 +44,21 @@ object NetworkModule {
     
     @Provides
     @Singleton
-    fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit {
+    @OkzywRetrofit
+    fun provideOkzywRetrofit(okHttpClient: OkHttpClient): Retrofit {
         return Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(OKZYW_BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    @TmdbRetrofit
+    fun provideTmdbRetrofit(okHttpClient: OkHttpClient): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl(TMDB_BASE_URL)
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
@@ -43,7 +66,13 @@ object NetworkModule {
     
     @Provides
     @Singleton
-    fun provideOkzywApi(retrofit: Retrofit): OkzywApi {
+    fun provideOkzywApi(@OkzywRetrofit retrofit: Retrofit): OkzywApi {
         return retrofit.create(OkzywApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    fun provideTmdbApi(@TmdbRetrofit retrofit: Retrofit): TmdbApi {
+        return retrofit.create(TmdbApi::class.java)
     }
 }

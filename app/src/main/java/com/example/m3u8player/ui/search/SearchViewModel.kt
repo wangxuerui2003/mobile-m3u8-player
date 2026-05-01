@@ -71,6 +71,13 @@ class SearchViewModel @Inject constructor(
         search()
     }
 
+    fun searchInitialQuery(query: String?) {
+        val normalized = query?.trim().orEmpty()
+        if (normalized.isBlank() || normalized == _searchQuery.value) return
+        _searchQuery.value = normalized
+        search()
+    }
+
     fun deleteSearchHistory(query: String) {
         viewModelScope.launch {
             repository.deleteSearchHistory(query)
