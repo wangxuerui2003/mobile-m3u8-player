@@ -1,10 +1,12 @@
 package com.example.m3u8player
 
 import android.app.Application
+import android.util.Log
 import com.example.m3u8player.data.ArtworkCache
 import com.example.m3u8player.data.PlayerSettingsStore
 import com.example.m3u8player.data.PresetDataLoader
 import com.example.m3u8player.data.repository.VideoRepository
+import com.example.m3u8player.service.DataUpdateService
 import com.example.m3u8player.service.DownloadCoordinator
 import com.example.m3u8player.service.DownloadNotificationHelper
 import dagger.hilt.android.HiltAndroidApp
@@ -46,11 +48,22 @@ class M3U8PlayerApplication : Application() {
         _updateState.value = UpdateState(isUpdating, progress)
     }
 
+    private companion object {
+        const val TAG = "M3U8PlayerApp"
+    }
+
     override fun onCreate() {
         super.onCreate()
         DownloadNotificationHelper.ensureChannel(this)
         applicationScope.launch {
             presetDataLoader.loadIfNeeded()
+            if (!videoRepository.hasSyncedFromApi()) {
+                try {
+                    DataUpdateService.start(this@M3U8PlayerApplication)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to start auto sync", e)
+                }
+            }
         }
         applicationScope.launch {
             downloadCoordinator.restoreQueueState()

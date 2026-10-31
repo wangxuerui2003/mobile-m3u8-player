@@ -3,6 +3,7 @@
 okzyw.net 资源获取模块
 用于获取全部视频数据并存储到SQLite数据库
 """
+import concurrent.futures
 import requests
 import sqlite3
 import json
@@ -428,8 +429,26 @@ def fetch_all_data(db_path: str = DB_FILE, fetch_details: bool = True):
         db.close()
 
 
-def fetch_list_to_json(output_path: str, delay: float = 0.8, max_pages: int = 0):
-    """获取列表数据并输出为JSON文件（用于Android APK预置数据）"""
+def fetch_page(page: int, delay: float = 0) -> Dict:
+    """独立获取一页（无共享Session，线程安全）"""
+    if delay > 0:
+        time.sleep(delay)
+    url = f"{API_BASE}/?ac=list&pg={page}"
+    try:
+        resp = requests.get(url, headers={
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        }, timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as e:
+        print(f"获取第{page}页失败: {e}")
+        return {}
+
+
+def fetch_list_to_json(output_path: str, delay: float = 0.8, max_pages: int = 0, workers: int = 1):
+    """获取列表数据并输出为JSON文件（用于Android APK预置数据）
+    边抓边写，每50页保存一次，避免中途失败丢失所有进度。
+    """
     print("="*60)
     print("开始获取列表数据 → JSON")
     print("="*60)
@@ -452,31 +471,61 @@ def fetch_list_to_json(output_path: str, delay: float = 0.8, max_pages: int = 0)
     
     all_videos = list(first_page.get('list', []))
     print(f"第 1/{fetch_pages} 页, 已获取 {len(all_videos)} 条")
+
+    def save_json():
+        """将当前数据写入文件"""
+        output = {
+            "categories": categories,
+            "videos": all_videos,
+            "total": total_items,
+            "fetched_at": datetime.now().isoformat()
+        }
+        os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else '.', exist_ok=True)
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(output, f, ensure_ascii=False)
     
-    # 获取剩余页面
-    for page in range(2, fetch_pages + 1):
-        time.sleep(delay)
-        page_data = fetcher.get_list_page(page)
-        videos = page_data.get('list', [])
-        if not videos:
-            print(f"第 {page}/{fetch_pages} 页为空，跳过")
-            continue
-        all_videos.extend(videos)
-        if page % 10 == 0 or page == fetch_pages:
-            print(f"第 {page}/{fetch_pages} 页, 已获取 {len(all_videos)} 条")
+    # 首次保存（第一页数据）
+    save_json()
     
-    # 构建输出
-    output = {
-        "categories": categories,
-        "videos": all_videos,
-        "total": total_items,
-        "fetched_at": datetime.now().isoformat()
-    }
+    # 获取剩余页面，按批并发抓取、按页序合并、每50页保存一次
+    pending = list(range(2, fetch_pages + 1))
+    batch_size = max(50, workers * 25)
+    done_pages = 1
+
+    def merge_pages(results):
+        nonlocal done_pages
+        for page, page_data in results:
+            videos = page_data.get('list', [])
+            if not videos:
+                print(f"第 {page}/{fetch_pages} 页为空，跳过")
+                continue
+            all_videos.extend(videos)
+            done_pages += 1
+            if done_pages % 10 == 0 or done_pages == fetch_pages:
+                print(f"第 {done_pages}/{fetch_pages} 页, 已获取 {len(all_videos)} 条")
+            if done_pages % 50 == 0:
+                save_json()
+                print(f"  → 已保存到文件 ({len(all_videos)} 条)")
+
+    if workers <= 1:
+        for page in pending:
+            time.sleep(delay)
+            merge_pages([(page, fetcher.get_list_page(page))])
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+            for i in range(0, len(pending), batch_size):
+                batch = pending[i:i + batch_size]
+                page_results = list(zip(batch, ex.map(
+                    lambda p: fetch_page(p, delay), batch)))
+                merge_pages(page_results)
+
+    # 按vod_id去重（并发抓取期间目录可能翻页导致重复）
+    seen_ids = set()
+    all_videos = [v for v in all_videos
+                  if v.get('vod_id') is not None and not (v['vod_id'] in seen_ids or seen_ids.add(v['vod_id']))]
     
-    # 写入文件
-    os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else '.', exist_ok=True)
-    with open(output_path, 'w', encoding='utf-8') as f:
-        json.dump(output, f, ensure_ascii=False)
+    # 最终保存
+    save_json()
     
     file_size_mb = os.path.getsize(output_path) / 1024 / 1024
     print(f"\nJSON文件已写入: {output_path}")
@@ -501,11 +550,12 @@ if __name__ == "__main__":
     json_parser.add_argument('--output', default='app/src/main/assets/preset_videos.json', help='输出JSON路径')
     json_parser.add_argument('--delay', type=float, default=0.5, help='请求间隔(秒)')
     json_parser.add_argument('--max-pages', type=int, default=200, help='最大获取页数(0=全部)')
+    json_parser.add_argument('--workers', type=int, default=8, help='并发抓取线程数(1=顺序)')
     
     args = parser.parse_args()
     
     if args.command == 'fetch-json':
-        fetch_list_to_json(args.output, delay=args.delay, max_pages=args.max_pages)
+        fetch_list_to_json(args.output, delay=args.delay, max_pages=args.max_pages, workers=args.workers)
     else:
         # 默认行为：fetch-db
         db_path = getattr(args, 'db', DB_FILE)

@@ -131,7 +131,9 @@ class VideoRepository @Inject constructor(
                 onProgress(totalPages, totalPages)
             }
 
-            dao.setMetadata(MetadataEntity("last_update", System.currentTimeMillis().toString()))
+            val now = System.currentTimeMillis().toString()
+            dao.setMetadata(MetadataEntity("last_update", now))
+            dao.setMetadata(MetadataEntity("last_api_sync", now))
             dao.setMetadata(MetadataEntity("total_items", totalInDb.toString()))
 
             Result.success(totalInDb)
@@ -203,7 +205,9 @@ class VideoRepository @Inject constructor(
             }
 
             val totalInDb = dao.getVideoCount()
-            dao.setMetadata(MetadataEntity("last_update", System.currentTimeMillis().toString()))
+            val now = System.currentTimeMillis().toString()
+            dao.setMetadata(MetadataEntity("last_update", now))
+            dao.setMetadata(MetadataEntity("last_api_sync", now))
             dao.setMetadata(MetadataEntity("total_items", totalInDb.toString()))
             dao.setMetadata(MetadataEntity("last_incremental_new_count", newCount.toString()))
             Result.success(totalInDb)
@@ -473,6 +477,8 @@ class VideoRepository @Inject constructor(
     }
 
     suspend fun getLastUpdateTime(): String? = dao.getMetadata("last_update")
+
+    suspend fun hasSyncedFromApi(): Boolean = dao.getMetadata("last_api_sync") != null
 
     suspend fun setLastUpdateTime(time: String) {
         dao.setMetadata(MetadataEntity("last_update", time))

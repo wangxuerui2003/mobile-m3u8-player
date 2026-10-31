@@ -2,7 +2,7 @@
 
 ## Project Summary
 
-This repository contains a native Android app for browsing and playing M3U8/HLS video sources backed by the `okzyw.net` API. The app is built with Jetpack Compose, Hilt, Room, Retrofit, Media3, and WorkManager.
+This repository contains a native Android app for browsing and playing M3U8/HLS video sources backed by the `okzyw.net` API. The app is built with Jetpack Compose, Hilt, Room, Retrofit, and Media3.
 
 ## Tooling
 
@@ -19,7 +19,7 @@ This repository contains a native Android app for browsing and playing M3U8/HLS 
 - `app/src/main/java/com/example/m3u8player/ui`
   - Compose screens, navigation, player UI, and feature ViewModels.
 - `app/src/main/java/com/example/m3u8player/service`
-  - Foreground update service and WorkManager download worker.
+  - Foreground data-update service and foreground download engine/coordinator.
 - `app/src/main/assets/preset_videos.json`
   - Seed data loaded on first launch.
 - `okzyw_fetcher.py`
@@ -29,7 +29,7 @@ This repository contains a native Android app for browsing and playing M3U8/HLS 
 
 - Do not remove the preset data bootstrap unless you also replace first-launch data population.
 - Prefer fixing issues through `VideoRepository` and `VideoDao` rather than bypassing the data layer in UI code.
-- Keep download state and persisted metadata in sync. If you change `DownloadWorker`, verify DB status updates and local file cleanup behavior.
+- Keep download state and persisted metadata in sync. If you change `DownloadEngine`/`DownloadCoordinator`, verify DB status updates and local file cleanup behavior.
 - Preserve `MainActivity` notification permission handling and `DataUpdateService` foreground-service behavior for Android 13+ and API 24+ compatibility.
 - Keep launcher icon resources compatible with both adaptive icon devices and pre-Android 8 devices.
 
@@ -37,7 +37,7 @@ This repository contains a native Android app for browsing and playing M3U8/HLS 
 
 - `PlayerScreen.kt`
   - Playback state is updated in Compose and watch history is saved on dispose.
-- `DownloadWorker.kt`
+- `DownloadEngine.kt`
   - Relative playlist URLs, nested playlists, and progress bookkeeping are easy to break.
 - `DataUpdateService.kt`
   - Must remain safe on API 24+ while still showing a foreground notification.

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -5,13 +7,23 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val localProperties = Properties().apply {
+    val localPropsFile = rootProject.file("local.properties")
+    if (localPropsFile.exists()) {
+        localPropsFile.inputStream().use { load(it) }
+    }
+}
+val tmdbApiKey = localProperties.getProperty("TMDB_API_KEY")
+    ?: System.getenv("TMDB_API_KEY")
+    ?: ""
+
 android {
     namespace = "com.example.m3u8player"
     compileSdk = 34
 
     signingConfigs {
         create("localRelease") {
-            storeFile = file("/Users/wxuerui/.android/debug.keystore")
+            storeFile = file("${System.getProperty("user.home")}/.android/debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
@@ -30,7 +42,7 @@ android {
             useSupportLibrary = true
         }
 
-        buildConfigField("String", "TMDB_API_KEY", "\"ea39f55082363b2e3e787430a6031d9b\"")
+        buildConfigField("String", "TMDB_API_KEY", "\"$tmdbApiKey\"")
 
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
@@ -71,6 +83,10 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+kotlin {
+    jvmToolchain(17)
 }
 
 configurations.all {

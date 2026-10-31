@@ -13,6 +13,7 @@ import javax.inject.Inject
 
 data class HomeUiState(
     val isLoading: Boolean = true,
+    val isRefreshing: Boolean = false,
     val sections: List<RecommendationSection> = emptyList(),
     val message: String? = null
 )
@@ -29,17 +30,30 @@ class HomeViewModel @Inject constructor(
         refresh()
     }
 
-    fun refresh() {
+    fun refresh(forceRefresh: Boolean = false) {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, message = null)
-            val sections = runCatching {
-                recommendationRepository.getHomeRecommendations()
-            }.getOrElse { emptyList() }
+            val hasExistingContent = _uiState.value.sections.isNotEmpty()
+            _uiState.value = _uiState.value.copy(
+                isLoading = !hasExistingContent,
+                isRefreshing = hasExistingContent,
+                message = null
+            )
+            val result = runCatching {
+                recommendationRepository.getHomeRecommendations(forceRefresh)
+            }.getOrElse {
+                com.example.m3u8player.data.repository.HomeRecommendationResult(emptyList(), hasStaleCache = false)
+            }
+            val sections = result.sections
 
             _uiState.value = HomeUiState(
                 isLoading = false,
+                isRefreshing = false,
                 sections = sections,
-                message = if (sections.isEmpty()) "暂无推荐内容，请稍后重试或先更新数据" else null
+                message = when {
+                    sections.isEmpty() -> "暂无推荐内容，请稍后重试或先更新数据"
+                    result.hasStaleCache -> "部分推荐来自缓存，稍后会自动更新"
+                    else -> null
+                }
             )
         }
     }

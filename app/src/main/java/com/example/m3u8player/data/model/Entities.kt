@@ -110,6 +110,14 @@ data class MetadataEntity(
     val value: String
 )
 
+@Entity(tableName = "recommendation_cache")
+data class RecommendationCacheEntity(
+    @PrimaryKey
+    val key: String,
+    val payloadJson: String,
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
 object DownloadStatus {
     const val QUEUED = "queued"
     const val DOWNLOADING = "downloading"

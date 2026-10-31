@@ -25,6 +25,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -84,21 +85,36 @@ fun HomeScreen(
             }
 
             else -> {
-                LazyColumn(
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(paddingValues),
-                    contentPadding = PaddingValues(vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(22.dp)
+                        .padding(paddingValues)
                 ) {
-                    items(uiState.sections, key = { it.title }) { section ->
-                        RecommendationSectionView(
-                            section = section,
-                            onItemClick = { item ->
-                                item.matchedVodId?.let(onVideoClick)
-                                    ?: onSearchRequest(item.searchQuery)
-                            }
+                    if (uiState.isRefreshing) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+                    uiState.message?.let { message ->
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
+                    }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(22.dp)
+                    ) {
+                        items(uiState.sections, key = { it.title }) { section ->
+                            RecommendationSectionView(
+                                section = section,
+                                onItemClick = { item ->
+                                    item.matchedVodId?.let(onVideoClick)
+                                        ?: onSearchRequest(item.searchQuery)
+                                }
+                            )
+                        }
                     }
                 }
             }

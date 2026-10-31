@@ -133,8 +133,13 @@ class PresetDataLoader @Inject constructor(
                     dao.insertVideos(batch)
                 }
 
-                val now = System.currentTimeMillis().toString()
-                dao.setMetadata(MetadataEntity("last_update", now))
+                val lastUpdate = runCatching {
+                    java.time.LocalDateTime.parse(data.fetchedAt)
+                        .atZone(java.time.ZoneId.systemDefault())
+                        .toInstant()
+                        .toEpochMilli()
+                }.getOrElse { System.currentTimeMillis() }
+                dao.setMetadata(MetadataEntity("last_update", lastUpdate.toString()))
                 dao.setMetadata(MetadataEntity("total_items", expectedVideoCount.toString()))
                 dao.setMetadata(MetadataEntity(META_PRESET_FETCHED_AT, data.fetchedAt))
                 dao.setMetadata(MetadataEntity(META_PRESET_VIDEO_COUNT, expectedVideoCount.toString()))

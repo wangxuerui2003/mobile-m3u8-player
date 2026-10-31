@@ -2,15 +2,28 @@ package com.example.m3u8player.data.repository
 
 import com.example.m3u8player.BuildConfig
 import com.example.m3u8player.data.api.TmdbApi
+import com.example.m3u8player.data.db.VideoDao
+import com.example.m3u8player.data.model.RecommendationCacheEntity
 import com.example.m3u8player.data.model.TmdbItem
+import com.example.m3u8player.data.model.TmdbListResponse
 import com.example.m3u8player.data.model.VideoListEntity
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 
 data class RecommendationSection(
     val title: String,
     val subtitle: String,
     val items: List<RecommendationItem>
+)
+
+data class HomeRecommendationResult(
+    val sections: List<RecommendationSection>,
+    val hasStaleCache: Boolean = false
 )
 
 data class RecommendationItem(
@@ -37,68 +50,123 @@ enum class RecommendationMediaType {
 @Singleton
 class RecommendationRepository @Inject constructor(
     private val tmdbApi: TmdbApi,
-    private val videoRepository: VideoRepository
+    private val videoRepository: VideoRepository,
+    private val dao: VideoDao
 ) {
-    suspend fun getHomeRecommendations(): List<RecommendationSection> {
-        val sections = mutableListOf<RecommendationSection>()
-        sections += loadTrendingSection()
-        sections += loadTmdbSection(
-            title = "高分电影",
-            subtitle = "按评分筛选，优先匹配本地可播资源",
-            type = RecommendationMediaType.MOVIE,
-            fetch = { apiKey -> tmdbApi.getTopRatedMovies(apiKey).results }
-        )
-        sections += loadTmdbSection(
-            title = "高分剧集",
-            subtitle = "剧集榜单，点击未匹配条目会进入搜索",
-            type = RecommendationMediaType.TV,
-            fetch = { apiKey -> tmdbApi.getTopRatedTv(apiKey).results }
-        )
-        sections += loadOkzywTodaySection()
-        return sections.filter { it.items.isNotEmpty() }
-    }
+    private val gson = Gson()
 
-    private suspend fun loadTrendingSection(): RecommendationSection {
-        val apiKey = BuildConfig.TMDB_API_KEY.trim()
-        if (apiKey.isBlank()) {
-            return RecommendationSection("最近流行", "来自 TMDB 趋势榜，未收录内容会跳到搜索", emptyList())
+    suspend fun getHomeRecommendations(forceRefresh: Boolean = false): HomeRecommendationResult =
+        coroutineScope {
+            val trending = async { loadTrendingSection(forceRefresh) }
+            val topMovies = async {
+                loadTmdbSection(
+                    title = "高分电影",
+                    subtitle = "按评分筛选，优先匹配本地可播资源",
+                    cacheKey = CACHE_TOP_RATED_MOVIES,
+                    ttlMs = TTL_TMDB_TOP_RATED,
+                    type = RecommendationMediaType.MOVIE,
+                    forceRefresh = forceRefresh,
+                    fetch = { apiKey -> tmdbApi.getTopRatedMovies(apiKey) }
+                )
+            }
+            val topTv = async {
+                loadTmdbSection(
+                    title = "高分剧集",
+                    subtitle = "剧集榜单，点击未匹配条目会进入搜索",
+                    cacheKey = CACHE_TOP_RATED_TV,
+                    ttlMs = TTL_TMDB_TOP_RATED,
+                    type = RecommendationMediaType.TV,
+                    forceRefresh = forceRefresh,
+                    fetch = { apiKey -> tmdbApi.getTopRatedTv(apiKey) }
+                )
+            }
+            val okzywToday = async { loadOkzywTodaySection(forceRefresh) }
+
+            val results = listOf(
+                trending.await(),
+                topMovies.await(),
+                topTv.await(),
+                okzywToday.await()
+            )
+            HomeRecommendationResult(
+                sections = results.map { it.section }.filter { it.items.isNotEmpty() },
+                hasStaleCache = results.any { it.isStale }
+            )
         }
 
-        val movies = runCatching { tmdbApi.getTrendingMovies(apiKey).results }
-            .getOrDefault(emptyList())
+    private suspend fun loadTrendingSection(forceRefresh: Boolean): CachedSection {
+        val apiKey = BuildConfig.TMDB_API_KEY.trim()
+        if (apiKey.isBlank()) {
+            return CachedSection(
+                RecommendationSection("最近流行", "来自 TMDB 趋势榜，未收录内容会跳到搜索", emptyList())
+            )
+        }
+
+        val (moviesResult, tvResult) = coroutineScope {
+            val moviesDeferred = async {
+                getCachedTmdbResponse(
+                    key = CACHE_TRENDING_MOVIES,
+                    ttlMs = TTL_TMDB_TRENDING,
+                    forceRefresh = forceRefresh,
+                    fetch = { tmdbApi.getTrendingMovies(apiKey) }
+                )
+            }
+            val tvDeferred = async {
+                getCachedTmdbResponse(
+                    key = CACHE_TRENDING_TV,
+                    ttlMs = TTL_TMDB_TRENDING,
+                    forceRefresh = forceRefresh,
+                    fetch = { tmdbApi.getTrendingTv(apiKey) }
+                )
+            }
+            moviesDeferred.await() to tvDeferred.await()
+        }
+
+        val movies = moviesResult.value?.results.orEmpty()
             .take(9)
             .mapNotNull { it.toRecommendationItem(RecommendationMediaType.MOVIE) }
-        val tv = runCatching { tmdbApi.getTrendingTv(apiKey).results }
-            .getOrDefault(emptyList())
+        val tv = tvResult.value?.results.orEmpty()
             .take(9)
             .mapNotNull { it.toRecommendationItem(RecommendationMediaType.TV) }
 
-        return RecommendationSection(
-            title = "最近流行",
-            subtitle = "来自 TMDB 电影和剧集趋势榜，未收录内容会跳到搜索",
-            items = (movies + tv).sortedByDescending { it.rating ?: 0.0 }
+        return CachedSection(
+            section = RecommendationSection(
+                title = "最近流行",
+                subtitle = "来自 TMDB 电影和剧集趋势榜，未收录内容会跳到搜索",
+                items = (movies + tv).sortedByDescending { it.rating ?: 0.0 }
+            ),
+            isStale = moviesResult.isStale || tvResult.isStale
         )
     }
 
     private suspend fun loadTmdbSection(
         title: String,
         subtitle: String,
+        cacheKey: String,
+        ttlMs: Long,
         type: RecommendationMediaType,
-        fetch: suspend (String) -> List<TmdbItem>
-    ): RecommendationSection {
+        forceRefresh: Boolean,
+        fetch: suspend (String) -> TmdbListResponse
+    ): CachedSection {
         val apiKey = BuildConfig.TMDB_API_KEY.trim()
         if (apiKey.isBlank()) {
-            return RecommendationSection(title, subtitle, emptyList())
+            return CachedSection(RecommendationSection(title, subtitle, emptyList()))
         }
 
-        val items = runCatching { fetch(apiKey) }
-            .getOrDefault(emptyList())
+        val cached = getCachedTmdbResponse(
+            key = cacheKey,
+            ttlMs = ttlMs,
+            forceRefresh = forceRefresh,
+            fetch = { fetch(apiKey) }
+        )
+
+        val items = cached.value?.results.orEmpty()
             .take(18)
             .mapNotNull { tmdbItem ->
                 tmdbItem.toRecommendationItem(type)
             }
 
-        return RecommendationSection(title, subtitle, items)
+        return CachedSection(RecommendationSection(title, subtitle, items), cached.isStale)
     }
 
     private suspend fun TmdbItem.toRecommendationItem(type: RecommendationMediaType): RecommendationItem? {
@@ -127,9 +195,9 @@ class RecommendationRepository @Inject constructor(
         )
     }
 
-    private suspend fun loadOkzywTodaySection(): RecommendationSection {
-        val remote = videoRepository.fetchTodayUpdates(limit = 20).getOrNull()
-        val items = (remote ?: videoRepository.getLatestVideos(limit = 20))
+    private suspend fun loadOkzywTodaySection(forceRefresh: Boolean): CachedSection {
+        val cached = getCachedOkzywToday(forceRefresh)
+        val items = cached.value
             .map { video ->
                 RecommendationItem(
                     title = video.vodName,
@@ -147,11 +215,85 @@ class RecommendationRepository @Inject constructor(
                 )
             }
 
-        return RecommendationSection(
-            title = "今日更新",
-            subtitle = "OK资源网最近 24 小时新增和更新",
-            items = items
+        return CachedSection(
+            section = RecommendationSection(
+                title = "今日更新",
+                subtitle = "OK资源网最近 24 小时新增和更新",
+                items = items
+            ),
+            isStale = cached.isStale
         )
+    }
+
+    private suspend fun getCachedTmdbResponse(
+        key: String,
+        ttlMs: Long,
+        forceRefresh: Boolean,
+        fetch: suspend () -> TmdbListResponse
+    ): CachedValue<TmdbListResponse?> {
+        return getCachedValue(
+            key = key,
+            ttlMs = ttlMs,
+            forceRefresh = forceRefresh,
+            decode = { json -> gson.fromJson(json, TmdbListResponse::class.java) },
+            encode = { value -> gson.toJson(value) },
+            fallback = null,
+            fetch = fetch
+        )
+    }
+
+    private suspend fun getCachedOkzywToday(forceRefresh: Boolean): CachedValue<List<VideoListEntity>> {
+        val listType = object : TypeToken<List<VideoListEntity>>() {}.type
+        return getCachedValue(
+            key = CACHE_OKZYW_TODAY,
+            ttlMs = TTL_OKZYW_TODAY,
+            forceRefresh = forceRefresh,
+            decode = { json -> gson.fromJson<List<VideoListEntity>>(json, listType).orEmpty() },
+            encode = { value -> gson.toJson(value, listType) },
+            fallback = videoRepository.getLatestVideos(limit = 20),
+            fetch = {
+                videoRepository.fetchTodayUpdates(limit = 20)
+                    .getOrThrow()
+            }
+        )
+    }
+
+    private suspend fun <T> getCachedValue(
+        key: String,
+        ttlMs: Long,
+        forceRefresh: Boolean,
+        decode: (String) -> T,
+        encode: (T) -> String,
+        fallback: T,
+        fetch: suspend () -> T
+    ): CachedValue<T> {
+        val now = System.currentTimeMillis()
+        val cache = dao.getRecommendationCache(key)
+        val cachedValue = cache?.let { runCatching { decode(it.payloadJson) }.getOrNull() }
+        val isFresh = cache != null && now - cache.updatedAt <= ttlMs
+
+        if (!forceRefresh && isFresh && cachedValue != null) {
+            return CachedValue(cachedValue)
+        }
+
+        return runCatching { fetch() }
+            .map { fresh ->
+                dao.setRecommendationCache(
+                    RecommendationCacheEntity(
+                        key = key,
+                        payloadJson = encode(fresh),
+                        updatedAt = now
+                    )
+                )
+                CachedValue(fresh)
+            }
+            .getOrElse {
+                if (cachedValue != null) {
+                    CachedValue(cachedValue, isStale = true)
+                } else {
+                    CachedValue(fallback, isStale = true)
+                }
+            }
     }
 
     private suspend fun findBestMatch(
@@ -210,5 +352,27 @@ class RecommendationRepository @Inject constructor(
         if (cleanedCandidate == cleanedTitle) return 7
         if (cleanedCandidate.contains(cleanedTitle)) return 5
         return 0
+    }
+
+    private data class CachedSection(
+        val section: RecommendationSection,
+        val isStale: Boolean = false
+    )
+
+    private data class CachedValue<T>(
+        val value: T,
+        val isStale: Boolean = false
+    )
+
+    companion object {
+        private const val CACHE_TRENDING_MOVIES = "tmdb_trending_movies_week_zh_cn"
+        private const val CACHE_TRENDING_TV = "tmdb_trending_tv_week_zh_cn"
+        private const val CACHE_TOP_RATED_MOVIES = "tmdb_top_rated_movies_zh_cn"
+        private const val CACHE_TOP_RATED_TV = "tmdb_top_rated_tv_zh_cn"
+        private const val CACHE_OKZYW_TODAY = "okzyw_today_updates"
+
+        private val TTL_TMDB_TRENDING = TimeUnit.HOURS.toMillis(12)
+        private val TTL_TMDB_TOP_RATED = TimeUnit.HOURS.toMillis(24)
+        private val TTL_OKZYW_TODAY = TimeUnit.HOURS.toMillis(1)
     }
 }

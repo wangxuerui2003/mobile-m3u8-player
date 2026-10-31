@@ -13,9 +13,10 @@ import com.example.m3u8player.data.model.*
         WatchLaterEntity::class,
         SearchHistoryEntity::class,
         DownloadEntity::class,
-        MetadataEntity::class
+        MetadataEntity::class,
+        RecommendationCacheEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

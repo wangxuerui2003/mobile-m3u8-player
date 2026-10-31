@@ -90,6 +90,20 @@ object DatabaseModule {
             )
         }
     }
+
+    private val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS recommendation_cache (
+                    `key` TEXT NOT NULL PRIMARY KEY,
+                    payloadJson TEXT NOT NULL,
+                    updatedAt INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+        }
+    }
     
     @Provides
     @Singleton
@@ -99,7 +113,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "okzyw_data.db"
         )
-        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
         .build()
     }
     

@@ -181,4 +181,14 @@ interface VideoDao {
     
     @Query("DELETE FROM metadata")
     suspend fun clearMetadata()
+
+    // Recommendation cache
+    @Query("SELECT * FROM recommendation_cache WHERE key = :key LIMIT 1")
+    suspend fun getRecommendationCache(key: String): RecommendationCacheEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun setRecommendationCache(cache: RecommendationCacheEntity)
+
+    @Query("DELETE FROM recommendation_cache")
+    suspend fun clearRecommendationCache()
 }

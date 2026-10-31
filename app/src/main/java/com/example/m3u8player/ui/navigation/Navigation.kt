@@ -16,6 +16,8 @@ import androidx.navigation.navArgument
 import com.example.m3u8player.ui.home.HomeScreen
 import com.example.m3u8player.ui.search.SearchScreen
 import com.example.m3u8player.ui.watchlater.WatchLaterScreen
+import com.example.m3u8player.ui.recent.RecentPlaybackRequest
+import com.example.m3u8player.ui.recent.RecentWatchScreen
 import com.example.m3u8player.ui.downloads.DownloadsScreen
 import com.example.m3u8player.ui.profile.ProfileScreen
 import com.example.m3u8player.ui.detail.DetailScreen
@@ -26,6 +28,7 @@ import com.example.m3u8player.ui.player.PlayerActivity
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     object Home : Screen("home", "首页", Icons.Default.Home)
     object Search : Screen("search", "搜索", Icons.Default.Search)
+    object Recent : Screen("recent", "最近观看", Icons.Default.History)
     object WatchLater : Screen("watch_later", "稍后再看", Icons.Default.FavoriteBorder)
     object Downloads : Screen("downloads", "下载", Icons.Default.Download)
     object Profile : Screen("profile", "我的", Icons.Default.Person)
@@ -41,7 +44,7 @@ fun AppNavigation(
     val screens = listOf(
         Screen.Home,
         Screen.Search,
-        Screen.WatchLater,
+        Screen.Recent,
         Screen.Downloads,
         Screen.Profile
     )
@@ -119,6 +122,15 @@ fun AppNavigation(
                     }
                 )
             }
+
+            composable(Screen.Recent.route) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                RecentWatchScreen(
+                    onPlayRequest = { request ->
+                        context.startActivity(request.toPlayerIntent(context))
+                    }
+                )
+            }
             
             composable(Screen.Downloads.route) {
                 DownloadsScreen(
@@ -129,23 +141,9 @@ fun AppNavigation(
             }
             
             composable(Screen.Profile.route) {
-                val context = androidx.compose.ui.platform.LocalContext.current
                 ProfileScreen(
-                    onPlayRequest = { request ->
-                        val intent = Intent(context, PlayerActivity::class.java).apply {
-                            putExtra("vodId", request.vodId)
-                            putExtra("vodName", request.vodName)
-                            putExtra("episode", request.episode)
-                            putExtra("episodeName", request.episodeName)
-                            putExtra("coverUrl", request.coverUrl)
-                            putExtra("startPositionMs", request.startPositionMs)
-                            putExtra("videoUrl", request.videoUrl)
-                            putExtra("localPlaylistPath", request.localPlaylistPath)
-                            putExtra("isPartialDownload", request.isPartialDownload)
-                            putExtra("downloadedDurationMs", request.downloadedDurationMs)
-                            putExtra("totalDurationMs", request.totalDurationMs)
-                        }
-                        context.startActivity(intent)
+                    onWatchLaterClick = {
+                        navController.navigate("watch_later")
                     }
                 )
             }
@@ -180,5 +178,21 @@ fun AppNavigation(
                 )
             }
         }
+    }
+}
+
+private fun RecentPlaybackRequest.toPlayerIntent(context: android.content.Context): Intent {
+    return Intent(context, PlayerActivity::class.java).apply {
+        putExtra("vodId", vodId)
+        putExtra("vodName", vodName)
+        putExtra("episode", episode)
+        putExtra("episodeName", episodeName)
+        putExtra("coverUrl", coverUrl)
+        putExtra("startPositionMs", startPositionMs)
+        putExtra("videoUrl", videoUrl)
+        putExtra("localPlaylistPath", localPlaylistPath)
+        putExtra("isPartialDownload", isPartialDownload)
+        putExtra("downloadedDurationMs", downloadedDurationMs)
+        putExtra("totalDurationMs", totalDurationMs)
     }
 }
