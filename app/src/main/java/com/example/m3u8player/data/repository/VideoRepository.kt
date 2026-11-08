@@ -104,6 +104,7 @@ class VideoRepository @Inject constructor(
         onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }
     ): Result<Int> {
         return try {
+            val syncStart = System.currentTimeMillis()
             val firstPage = retry { api.getVideoList(page = 1) }
             val totalPages = firstPage.pageCount
 
@@ -131,9 +132,8 @@ class VideoRepository @Inject constructor(
                 onProgress(totalPages, totalPages)
             }
 
-            val now = System.currentTimeMillis().toString()
-            dao.setMetadata(MetadataEntity("last_update", now))
-            dao.setMetadata(MetadataEntity("last_api_sync", now))
+            dao.setMetadata(MetadataEntity("last_update", syncStart.toString()))
+            dao.setMetadata(MetadataEntity("last_api_sync", System.currentTimeMillis().toString()))
             dao.setMetadata(MetadataEntity("total_items", totalInDb.toString()))
 
             Result.success(totalInDb)
@@ -148,21 +148,15 @@ class VideoRepository @Inject constructor(
         val lastUpdate = getLastUpdateTime()?.toLongOrNull()
         val currentCount = dao.getVideoCount()
         val now = System.currentTimeMillis()
-        val maxIncrementalAgeMs = TimeUnit.DAYS.toMillis(7)
 
-        if (lastUpdate == null || currentCount == 0 || now - lastUpdate > maxIncrementalAgeMs) {
+        if (lastUpdate == null || currentCount == 0) {
             return fetchAllVideoList(onProgress)
         }
 
         val hoursSinceUpdate = TimeUnit.MILLISECONDS.toHours(now - lastUpdate).toInt()
-        val windowHours = (hoursSinceUpdate + 2).coerceIn(24, 168)
+        val windowHours = (hoursSinceUpdate + 2).coerceAtLeast(24)
 
-        val incremental = fetchRecentVideoList(hours = windowHours, onProgress = onProgress)
-        return if (incremental.isSuccess) {
-            incremental
-        } else {
-            fetchAllVideoList(onProgress)
-        }
+        return fetchRecentVideoList(hours = windowHours, onProgress = onProgress)
     }
 
     suspend fun fetchTodayUpdates(limit: Int = 20): Result<List<VideoListEntity>> {
@@ -187,6 +181,7 @@ class VideoRepository @Inject constructor(
         onProgress: (current: Int, total: Int) -> Unit
     ): Result<Int> {
         return try {
+            val syncStart = System.currentTimeMillis()
             val firstPage = retry { api.getVideoList(page = 1, hours = hours) }
             val totalPages = firstPage.pageCount.coerceAtLeast(1)
 
@@ -205,9 +200,8 @@ class VideoRepository @Inject constructor(
             }
 
             val totalInDb = dao.getVideoCount()
-            val now = System.currentTimeMillis().toString()
-            dao.setMetadata(MetadataEntity("last_update", now))
-            dao.setMetadata(MetadataEntity("last_api_sync", now))
+            dao.setMetadata(MetadataEntity("last_update", syncStart.toString()))
+            dao.setMetadata(MetadataEntity("last_api_sync", System.currentTimeMillis().toString()))
             dao.setMetadata(MetadataEntity("total_items", totalInDb.toString()))
             dao.setMetadata(MetadataEntity("last_incremental_new_count", newCount.toString()))
             Result.success(totalInDb)

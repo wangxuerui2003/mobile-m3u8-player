@@ -42,7 +42,7 @@ class M3U8PlayerApplication : Application() {
     private val _updateState = MutableStateFlow(UpdateState())
     val updateState: StateFlow<UpdateState> = _updateState.asStateFlow()
 
-    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun setUpdateState(isUpdating: Boolean, progress: Float) {
         _updateState.value = UpdateState(isUpdating, progress)
@@ -56,8 +56,8 @@ class M3U8PlayerApplication : Application() {
         super.onCreate()
         DownloadNotificationHelper.ensureChannel(this)
         applicationScope.launch {
-            presetDataLoader.loadIfNeeded()
-            if (!videoRepository.hasSyncedFromApi()) {
+            val presetReloaded = presetDataLoader.loadIfNeeded()
+            if (presetReloaded || !videoRepository.hasSyncedFromApi()) {
                 try {
                     DataUpdateService.start(this@M3U8PlayerApplication)
                 } catch (e: Exception) {

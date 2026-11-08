@@ -66,7 +66,6 @@ import com.example.m3u8player.ui.detail.parseEpisodes
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import android.net.Uri
 import java.io.File
 import kotlin.math.abs
@@ -159,7 +158,7 @@ fun PlayerScreen(
         currentPosition = seekMs.coerceAtLeast(0L)
     }
 
-    suspend fun saveCurrentWatchHistory() {
+    suspend fun saveCurrentWatchHistory(positionMs: Long, durationMs: Long) {
         if (vodId <= 0 || vodName.isBlank()) return
         val coverPath = artworkCache.cacheArtwork("vod_$vodId", currentCoverUrl)
         repository.saveWatchHistory(
@@ -170,12 +169,8 @@ fun PlayerScreen(
                 episodeName = currentEpisodeName.ifBlank { "第${currentEpisode + 1}集" },
                 coverUrl = currentCoverUrl,
                 coverPath = coverPath,
-                progressMs = exoPlayer.currentPosition.coerceAtLeast(0L),
-                durationMs = listOf(
-                    totalDurationHintMs,
-                    duration,
-                    exoPlayer.duration.coerceAtLeast(0L)
-                ).maxOrNull() ?: 0L
+                progressMs = positionMs,
+                durationMs = durationMs
             )
         )
     }
@@ -188,9 +183,17 @@ fun PlayerScreen(
         }
         exoPlayer.addListener(listener)
         onDispose {
-            runBlocking { saveCurrentWatchHistory() }
+            val positionMs = exoPlayer.currentPosition.coerceAtLeast(0L)
+            val durationMs = listOf(
+                totalDurationHintMs,
+                duration,
+                exoPlayer.duration.coerceAtLeast(0L)
+            ).maxOrNull() ?: 0L
             exoPlayer.removeListener(listener)
             exoPlayer.release()
+            app.applicationScope.launch {
+                saveCurrentWatchHistory(positionMs, durationMs)
+            }
         }
     }
 
@@ -323,7 +326,14 @@ fun PlayerScreen(
                 return@launch
             }
 
-            saveCurrentWatchHistory()
+            saveCurrentWatchHistory(
+                positionMs = exoPlayer.currentPosition.coerceAtLeast(0L),
+                durationMs = listOf(
+                    totalDurationHintMs,
+                    duration,
+                    exoPlayer.duration.coerceAtLeast(0L)
+                ).maxOrNull() ?: 0L
+            )
             currentEpisode = target.index
             currentEpisodeName = target.name.ifBlank { "第${target.index + 1}集" }
             currentCoverUrl = download?.coverUrl ?: currentCoverUrl

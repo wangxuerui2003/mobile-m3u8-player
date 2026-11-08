@@ -68,7 +68,7 @@ class PresetDataLoader @Inject constructor(
         private const val META_PRESET_SOURCE_TOTAL = "preset_source_total"
     }
 
-    suspend fun loadIfNeeded() = withContext(Dispatchers.IO) {
+    suspend fun loadIfNeeded(): Boolean = withContext(Dispatchers.IO) {
         try {
             val json = context.assets.open(PRESET_FILE).bufferedReader().use { it.readText() }
             val data = Gson().fromJson(json, PresetData::class.java)
@@ -98,30 +98,23 @@ class PresetDataLoader @Inject constructor(
             val expectedCategoryCount = categories.size
 
             val existingVideoCount = dao.getVideoCount()
-            val existingCategoryCount = dao.getCategoryCount()
             val storedFetchedAt = dao.getMetadata(META_PRESET_FETCHED_AT)
-            val storedVideoCount = dao.getMetadata(META_PRESET_VIDEO_COUNT)?.toIntOrNull()
-            val storedCategoryCount = dao.getMetadata(META_PRESET_CATEGORY_COUNT)?.toIntOrNull()
 
             val needsReload =
                 existingVideoCount == 0 ||
-                existingVideoCount != expectedVideoCount ||
-                existingCategoryCount != expectedCategoryCount ||
-                storedFetchedAt != data.fetchedAt ||
-                storedVideoCount != expectedVideoCount ||
-                storedCategoryCount != expectedCategoryCount
+                storedFetchedAt != data.fetchedAt
 
             if (!needsReload) {
                 Log.d(
                     TAG,
-                    "Preset data already matches asset: videos=$existingVideoCount categories=$existingCategoryCount fetchedAt=$storedFetchedAt"
+                    "Preset data already matches asset: videos=$existingVideoCount fetchedAt=$storedFetchedAt"
                 )
-                return@withContext
+                return@withContext false
             }
 
             Log.d(
                 TAG,
-                "Reload preset data: existingVideos=$existingVideoCount expectedVideos=$expectedVideoCount existingCategories=$existingCategoryCount expectedCategories=$expectedCategoryCount fetchedAt=${data.fetchedAt}"
+                "Reload preset data: existingVideos=$existingVideoCount expectedVideos=$expectedVideoCount expectedCategories=$expectedCategoryCount fetchedAt=${data.fetchedAt}"
             )
 
             database.withTransaction {
@@ -149,8 +142,10 @@ class PresetDataLoader @Inject constructor(
                 TAG,
                 "Preset data loaded: videos=$expectedVideoCount categories=$expectedCategoryCount sourceTotal=${data.total}"
             )
+            true
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load preset data", e)
+            false
         }
     }
 }
